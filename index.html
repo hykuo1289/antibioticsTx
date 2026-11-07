@@ -1,0 +1,3649 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>抗生素大作戰 3D - Antibiotic Tower Defense</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Noto+Sans+TC:wght@400;600;700;900&display=swap');
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0f172a;
+      font-family: 'Noto Sans TC', 'Inter', sans-serif;
+      touch-action: none;
+    }
+    #game-canvas-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+    }
+    #water-wave-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 35;
+      overflow: hidden;
+      display: none;
+    }
+    .water-surge {
+      position: absolute;
+      top: -20%;
+      left: -120%;
+      width: 120%;
+      height: 140%;
+      background: linear-gradient(90deg,
+        rgba(56, 189, 248, 0) 0%,
+        rgba(14, 165, 233, 0.65) 25%,
+        rgba(2, 132, 199, 0.88) 55%,
+        rgba(186, 230, 253, 0.92) 80%,
+        rgba(56, 189, 248, 0) 100%);
+      transform: skewX(-15deg);
+      animation: surgeAcross 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      box-shadow: 0 0 80px rgba(56, 189, 248, 0.9);
+    }
+    @keyframes surgeAcross {
+      0% { left: -120%; }
+      100% { left: 120%; }
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="text-slate-100">
+
+  <!-- 3D Viewport Container -->
+  <div id="game-canvas-container"></div>
+
+  <!-- Handwash Blue Water Surge Overlay -->
+  <div id="water-wave-overlay">
+    <div id="water-surge-bar" class="water-surge"></div>
+    <div class="absolute inset-0 flex items-center justify-center">
+      <div class="px-6 py-3 rounded-2xl bg-sky-500/90 text-white font-black text-2xl sm:text-4xl tracking-wider shadow-2xl border-2 border-white animate-bounce">
+        💧 勤洗手！沖走所有細菌！ 💧
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP HUD BAR -->
+  <header class="fixed top-0 left-0 right-0 z-20 p-2 sm:p-3 pointer-events-none">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <!-- Stats Pills -->
+      <div class="glass-panel rounded-2xl px-3 py-1.5 sm:px-4 sm:py-2 flex flex-wrap items-center gap-3 sm:gap-6 shadow-xl pointer-events-auto">
+        <div class="flex items-center gap-1.5">
+          <span class="text-amber-400 text-lg sm:text-xl">🪙</span>
+          <div>
+            <div class="text-[10px] text-slate-400 leading-none">所持金幣</div>
+            <div id="hud-gold" class="text-sm sm:text-lg font-extrabold text-amber-300">15</div>
+          </div>
+        </div>
+
+        <div class="h-6 w-px bg-slate-700"></div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-rose-400 text-lg sm:text-xl">🦠</span>
+          <div>
+            <div class="text-[10px] text-slate-400 leading-none">本關剩餘細菌</div>
+            <div id="hud-remaining" class="text-sm sm:text-lg font-extrabold text-rose-300">10</div>
+          </div>
+        </div>
+
+        <div class="h-6 w-px bg-slate-700"></div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-emerald-400 text-lg sm:text-xl">🏥</span>
+          <div>
+            <div class="text-[10px] text-slate-400 leading-none">醫院生命值</div>
+            <div id="hud-castle" class="text-sm sm:text-lg font-extrabold text-emerald-300">10 / 10</div>
+          </div>
+        </div>
+
+        <div class="h-6 w-px bg-slate-700"></div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-sky-400 text-lg sm:text-xl">☠️</span>
+          <div>
+            <div class="text-[10px] text-slate-400 leading-none">累計殺死細菌</div>
+            <div id="hud-kills" class="text-sm sm:text-lg font-extrabold text-sky-300">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wave & Controls Pill -->
+      <div class="glass-panel rounded-2xl px-3 py-1.5 sm:px-4 sm:py-2 flex items-center gap-2 sm:gap-3 shadow-xl pointer-events-auto">
+        <div class="text-right mr-1">
+          <div class="text-[10px] text-slate-400 leading-none">目前關卡</div>
+          <div id="hud-wave" class="text-sm sm:text-base font-black text-indigo-300">第 1 關</div>
+        </div>
+        <button id="btn-codex" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-xs font-bold text-slate-200 border border-slate-600 transition flex items-center gap-1" title="抗生素殺傷力圖鑑">
+          <span>📖</span><span class="hidden sm:inline">圖鑑</span>
+        </button>
+        <button id="btn-audio" type="button" class="px-2.5 py-1.5 rounded-xl bg-indigo-600/80 hover:bg-indigo-500 active:scale-95 text-xs font-bold text-white border border-indigo-400/40 transition flex items-center gap-1" title="切換BGM與音效">
+          <span id="audio-icon">🔊</span><span id="audio-label" class="hidden sm:inline">音效開</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- PAUSED INDICATOR BANNER -->
+  <div id="pause-banner" class="fixed inset-0 z-30 hidden items-center justify-center bg-slate-950/55 backdrop-blur-sm pointer-events-auto">
+    <div class="glass-panel px-7 py-5 rounded-3xl border-2 border-amber-400/70 shadow-2xl text-center max-w-xs w-full mx-4">
+      <div class="text-4xl mb-2">⏸️</div>
+      <div class="text-xl font-black text-amber-300 tracking-wide">遊戲時間已暫停</div>
+      <p class="text-xs text-slate-300 mt-1 mb-4">所有細菌移動、攻擊冷卻與洗手計時均已暫停</p>
+      <button id="btn-resume-overlay" type="button" class="w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-sm shadow-lg active:scale-95 transition">
+        ▶️ 繼續遊戲
+      </button>
+    </div>
+  </div>
+
+  <!-- CENTER WAVE BANNER TOAST -->
+  <div id="wave-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none transition-all duration-300 opacity-0 -translate-y-4">
+    <div class="glass-panel px-5 py-2.5 rounded-2xl border border-indigo-400/50 shadow-2xl text-center">
+      <div id="wave-toast-title" class="text-base sm:text-lg font-black text-indigo-300">第 1 關開始！</div>
+      <div id="wave-toast-sub" class="text-xs text-slate-300 mt-0.5">敵人：腸桿菌 x10（本關僅可進化醫師）</div>
+    </div>
+  </div>
+
+  <!-- BOTTOM-LEFT MINIMAP -->
+  <div class="fixed bottom-3 left-3 z-20 pointer-events-auto">
+    <div class="glass-panel rounded-2xl p-2 shadow-2xl border border-slate-600/60">
+      <div class="flex items-center justify-between text-[10px] text-slate-300 font-bold mb-1 px-1">
+        <span>🗺️ 醫院走道小地圖</span>
+        <span id="minimap-hint" class="text-slate-400">WASD / 滑動移動</span>
+      </div>
+      <canvas id="minimap-canvas" width="156" height="196" class="rounded-xl bg-slate-900/90 border border-slate-700 block w-[124px] h-[156px] sm:w-[156px] sm:h-[196px]"></canvas>
+      <div class="flex items-center justify-between text-[9px] text-slate-400 mt-1 px-0.5">
+        <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></i>醫師</span>
+        <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-amber-400 inline-block"></i>防禦</span>
+        <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-full bg-rose-500 inline-block"></i>細菌</span>
+        <span class="flex items-center gap-1"><i class="w-2 h-2 rounded-sm bg-emerald-400 inline-block"></i>醫院</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MOBILE TOUCH JOYSTICK INDICATOR -->
+  <div id="touch-joystick-ring" class="fixed z-10 pointer-events-none hidden w-24 h-24 -ml-12 -mt-12 rounded-full border-2 border-cyan-400/50 bg-cyan-500/10 items-center justify-center">
+    <div id="touch-joystick-nub" class="w-10 h-10 rounded-full bg-cyan-400/70 shadow-lg"></div>
+  </div>
+
+  <!-- BOTTOM-RIGHT CONTROLS & CONTEXTUAL PAD MENU -->
+  <div class="fixed bottom-3 right-3 z-20 flex flex-col items-end gap-2 max-w-[92vw] sm:max-w-md pointer-events-none">
+
+    <!-- Contextual Defense Pad Menu (Appears when standing on/near one of the 8 pads) -->
+    <div id="pad-menu" class="glass-panel rounded-2xl p-3 shadow-2xl border border-amber-400/50 w-[290px] sm:w-[350px] pointer-events-auto hidden transition-all">
+      <div class="flex items-center justify-between border-b border-slate-700/80 pb-1.5 mb-2">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="pad-menu-title" class="text-xs sm:text-sm font-black text-amber-300">防禦點位 #1</span>
+        </div>
+        <span id="pad-menu-status" class="text-[11px] text-slate-400 font-semibold">空置中</span>
+      </div>
+
+      <!-- Build List (When Pad is Empty) -->
+      <div id="pad-build-list" class="grid grid-cols-2 gap-1.5 max-h-[210px] overflow-y-auto custom-scrollbar pr-0.5">
+        <!-- Dynamically populated based on wave availability -->
+      </div>
+
+      <!-- Existing Tower Actions (When Pad is Occupied) -->
+      <div id="pad-manage-list" class="hidden flex-col gap-2">
+        <div id="pad-tower-info" class="text-xs bg-slate-800/90 rounded-xl p-2 border border-slate-700 text-slate-200"></div>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button id="btn-pad-upgrade" type="button" class="px-2 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-xs transition flex flex-col items-center justify-center border border-rose-400/40">
+            <span>🚒 升級</span>
+            <span class="text-[10px] font-normal">Meropenem (10金)</span>
+          </button>
+          <button id="btn-pad-plusone" type="button" class="px-2 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold text-xs transition flex flex-col items-center justify-center border border-indigo-400/40">
+            <span>➕ +1 增援</span>
+            <span id="plusone-label" class="text-[10px] font-normal">15 金</span>
+          </button>
+          <button id="btn-pad-demolish" type="button" class="px-2 py-2 rounded-xl bg-amber-600/90 hover:bg-amber-500 text-white font-bold text-xs transition flex flex-col items-center justify-center border border-amber-400/40">
+            <span>🔨 拆除</span>
+            <span id="demolish-refund" class="text-[10px] font-normal">回收 +3金</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons Row: Pause + Handwash + Doctor Evolution -->
+    <div class="flex flex-wrap items-center justify-end gap-2 pointer-events-auto">
+      <!-- Bottom Pause Button -->
+      <button id="btn-pause" type="button" class="glass-panel px-3.5 py-2.5 rounded-2xl border-2 border-amber-400/60 hover:border-amber-300 active:scale-95 transition flex items-center gap-2 shadow-xl">
+        <div id="pause-icon-box" class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-lg">
+          ⏸️
+        </div>
+        <div class="text-left">
+          <div id="pause-title" class="text-xs sm:text-sm font-black text-amber-300">暫停遊戲</div>
+          <div id="pause-desc" class="text-[10px] text-slate-300">時間暫停 (P鍵)</div>
+        </div>
+      </button>
+
+      <!-- Handwash Button -->
+      <button id="btn-handwash" type="button" class="relative group glass-panel px-3.5 py-2.5 rounded-2xl border-2 border-sky-400/60 hover:border-sky-300 active:scale-95 transition flex items-center gap-2.5 shadow-xl disabled:opacity-60 disabled:cursor-not-allowed">
+        <div class="relative w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center">
+          <!-- Two palms together with water droplets SVG -->
+          <svg class="w-7 h-7 text-sky-300" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Water drops on top -->
+            <path d="M18 2C18 2 15 6 15 8C15 9.65 16.35 11 18 11C19.65 11 21 9.65 21 8C21 6 18 2 18 2Z" fill="#38bdf8"/>
+            <path d="M11 5C11 5 9 8 9 9.5C9 10.6 9.9 11.5 11 11.5C12.1 11.5 13 10.6 13 9.5C13 8 11 5 11 5Z" fill="#7dd3fc"/>
+            <path d="M25 5C25 5 23 8 23 9.5C23 10.6 23.9 11.5 25 11.5C26.1 11.5 27 10.6 27 9.5C27 8 25 5 25 5Z" fill="#7dd3fc"/>
+            <!-- Left & Right Palms Together -->
+            <path d="M8 22C8 17 11 13 15 13H17V31H13C10.2 31 8 28.8 8 26V22Z" fill="#fde68a" stroke="#f59e0b" stroke-width="1.5"/>
+            <path d="M28 22C28 17 25 13 21 13H19V31H23C25.8 31 28 28.8 28 26V22Z" fill="#fcd34d" stroke="#f59e0b" stroke-width="1.5"/>
+          </svg>
+        </div>
+        <div class="text-left">
+          <div class="text-xs sm:text-sm font-black text-sky-200 flex items-center gap-1">
+            <span>洗手沖刷</span>
+            <span id="handwash-badge" class="text-[10px] px-1.5 py-0.5 rounded bg-sky-900/90 text-sky-300 font-bold">180s</span>
+          </div>
+          <div class="text-[10px] text-slate-300">全畫面消滅細菌(無金幣)</div>
+        </div>
+      </button>
+
+      <!-- Doctor Unasyn Evolution Button -->
+      <button id="btn-evolve" type="button" class="glass-panel px-3.5 py-2.5 rounded-2xl border-2 border-emerald-400/60 hover:border-emerald-300 active:scale-95 transition flex items-center gap-2.5 shadow-xl disabled:opacity-60 disabled:cursor-not-allowed">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-xl">
+          🔪
+        </div>
+        <div class="text-left">
+          <div id="evolve-title" class="text-xs sm:text-sm font-black text-emerald-300">強化：Tigecycline (5金)</div>
+          <div id="evolve-desc" class="text-[10px] text-slate-300">騎乘老虎・廣效殺傷 (攻速0.8s)</div>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- START / INTRO MODAL -->
+  <div id="modal-start" class="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div class="glass-panel rounded-3xl max-w-lg w-full p-6 border border-slate-700 shadow-2xl text-slate-100 max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-2xl">
+          🩺
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-black text-white">抗生素大作戰 3D</h1>
+          <p class="text-xs text-emerald-300 font-semibold">Unasyn 醫師與抗生素防禦塔防遊戲</p>
+        </div>
+      </div>
+
+      <div class="space-y-2.5 text-xs sm:text-sm text-slate-300 leading-relaxed bg-slate-900/70 p-3.5 rounded-2xl border border-slate-800">
+        <p>👨‍⚕️ <strong class="text-white">扮演 Unasyn 醫師與強化：</strong>初始每 0.8 秒投擲手術刀；第 1 次強化（5 金）變身 <strong class="text-amber-300">Tigecycline 騎乘老虎</strong>（0.8 秒攻擊一次，可殺傷腸桿菌、葡萄球菌、厭氧菌、ESBL、CRE、MRSA、不動桿菌）；第 2 次強化（10 金）攻速提升為 0.5 秒一次！過關後場地清空、強化重置，金幣保留一半至下一關。</p>
+        <p>🎮 <strong class="text-white">雙平台操作：</strong>電腦使用 <kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-white">W</kbd><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-white">A</kbd><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-white">S</kbd><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-white">D</kbd> 移動；手機直接<strong class="text-cyan-300">在螢幕上滑動拖曳</strong>即可移動醫師攔截細菌。</p>
+        <p>🛡️ <strong class="text-white">8 個防禦設點：</strong>走到 S 型醫院走道旁的發光圓圈點位上，右下角會跳出選單購買抗生素防禦人員、升級 <strong class="text-rose-300">Meropenem 消防員</strong>、花 15 金 <strong class="text-indigo-300">+1 增援</strong>，或拆除回收 60% 投入金額。</p>
+        <p>💧 <strong class="text-white">洗手大招：</strong>冷卻時間 180 秒，可使用「洗手」召喚藍色水流沖刷全場，瞬間消滅所有畫面上的細菌（不獲得金幣）。</p>
+      </div>
+
+      <div class="mt-5 flex items-center justify-end gap-3">
+        <button id="btn-start-game" type="button" class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-base shadow-lg shadow-emerald-500/25 active:scale-98 transition">
+          🚀 開始執勤（啟動 BGM 與 3D 戰場）
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANTIBIOTIC CODEX MODAL -->
+  <div id="modal-codex" class="fixed inset-0 z-40 hidden items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div class="glass-panel rounded-3xl max-w-2xl w-full p-5 border border-slate-700 shadow-2xl text-slate-100 max-h-[88vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-3">
+        <h2 class="text-lg font-black text-amber-300">📖 抗生素殺傷力與細菌圖鑑</h2>
+        <button id="btn-close-codex" type="button" class="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold">關閉 ✕</button>
+      </div>
+      <div class="text-xs text-slate-300 space-y-3">
+        <p class="text-slate-400">※ 我方醫師與防禦角色<strong class="text-white">只會轉身面對並攻擊自己有殺傷力的細菌</strong>（生命值皆為 100，射程為顯示戰場寬度 1/5）：</p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-[11px]">
+            <thead>
+              <tr class="border-b border-slate-700 text-slate-300 bg-slate-800/70">
+                <th class="p-1.5">抗生素角色</th>
+                <th class="p-1.5">價格/間隔</th>
+                <th class="p-1.5">有效殺傷對象與傷害值</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              <tr>
+                <td class="p-1.5 font-bold text-emerald-300">Unasyn (初始醫師)</td>
+                <td class="p-1.5">0.8s</td>
+                <td class="p-1.5">腸桿菌 40、葡萄球菌 40、厭氧菌 40、不動桿菌 30</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-orange-300">Tigecycline (騎老虎醫師)</td>
+                <td class="p-1.5">1階5金(0.8s) / 2階10金(0.5s)</td>
+                <td class="p-1.5">腸桿菌 60、葡萄球菌 50、厭氧菌 40、ESBL 40、CRE 20、MRSA 40、不動桿菌 25</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-yellow-300">Polymyxin (手槍牛仔)</td>
+                <td class="p-1.5">10金 / 1.0s (第3關起)</td>
+                <td class="p-1.5">腸桿菌 25、ESBL 25、CRE 20、綠膿桿菌 25、不動桿菌 30</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-sky-300">Ertapenem (棒球少年)</td>
+                <td class="p-1.5">5金 / 1.2s</td>
+                <td class="p-1.5">腸桿菌 55、葡萄球菌 40、ESBL腸桿菌 60、厭氧菌 35</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-rose-300">Meropenem (紅衣消防員)</td>
+                <td class="p-1.5">升級 10金 / 連續水柱</td>
+                <td class="p-1.5">每秒：腸桿菌 100、ESBL 70、葡萄球菌 40、厭氧菌 50、綠膿桿菌 50</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-amber-300">Ciprofloxacin (蘿拉弓箭少女)</td>
+                <td class="p-1.5">5金 / 1.2s</td>
+                <td class="p-1.5">腸桿菌 100、綠膿桿菌 100、ESBL 25、CRE 10、葡萄球菌 10</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-purple-300">Zavicefta (黑白女僕狙擊手)</td>
+                <td class="p-1.5">15金 / 3.0s</td>
+                <td class="p-1.5">腸桿菌 100、ESBL 100、CRE 100、綠膿桿菌 50、葡萄球菌 10</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-red-400">Erasix (紅斗篷火球法師)</td>
+                <td class="p-1.5">10金 / 2.4s</td>
+                <td class="p-1.5">念珠菌 100</td>
+              </tr>
+              <tr>
+                <td class="p-1.5 font-bold text-blue-300">Teicoplanin (水手服火箭筒女生)</td>
+                <td class="p-1.5">10金 / 3.0s</td>
+                <td class="p-1.5">葡萄球菌 60、MRSA 100</td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME OVER MODAL -->
+  <div id="modal-gameover" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+    <div class="glass-panel rounded-3xl max-w-md w-full p-6 border-2 border-rose-500/60 shadow-2xl text-center">
+      <div class="text-5xl mb-2">🏚️</div>
+      <h2 class="text-2xl font-black text-rose-400">醫院失守！遊戲結束</h2>
+      <p class="text-xs text-slate-300 mt-1">已有 10 隻細菌突破防線進入終點醫院大樓</p>
+
+      <div class="my-5 p-4 rounded-2xl bg-slate-900/90 border border-slate-700">
+        <div class="text-xs text-slate-400">從第一關開始一共殺死細菌數目</div>
+        <div id="gameover-kills" class="text-4xl font-black text-amber-300 mt-1">0</div>
+        <div id="gameover-wave" class="text-xs text-indigo-300 mt-1 font-semibold">抵達關卡：第 1 關</div>
+      </div>
+
+      <button id="btn-restart" type="button" class="w-full py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-400 hover:to-amber-400 text-slate-950 font-black text-base shadow-lg active:scale-95 transition">
+        🔄 重新開始挑戰
+      </button>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. SOUND & BGM SYNTHESIZER (Web Audio API - No external audio files needed)
+    // =========================================================================
+    class SoundSystem {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+        this.bgmTimer = null;
+        this.bgmStep = 0;
+        this.waterNoiseNode = null;
+        this.lastWaterTick = 0;
+      }
+
+      ensureContext() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            this.ctx = new AudioCtx();
+          }
+        }
+        if (this.ctx && this.ctx.state !== 'running') {
+          this.ctx.resume().catch(() => {});
+          // Play silent 1-sample buffer to unlock iOS/Safari/iframe WebAudio immediately on gesture
+          try {
+            const buf = this.ctx.createBuffer(1, 1, 22050);
+            const src = this.ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(this.ctx.destination);
+            src.start(0);
+          } catch (e) {}
+        }
+      }
+
+      init() {
+        this.ensureContext();
+        this.startBGM();
+      }
+
+      toggle() {
+        this.enabled = !this.enabled;
+        if (!this.enabled) {
+          this.stopBGM();
+        } else {
+          this.init();
+          this.playSfx('upgrade');
+        }
+        return this.enabled;
+      }
+
+      startBGM() {
+        if (!this.enabled) return;
+        this.ensureContext();
+        if (!this.ctx || this.bgmTimer) return;
+
+        // Upbeat Chiptune Hospital Defense BGM (Lead + Harmony + Bass)
+        const melody = [
+          261.63, 329.63, 392.00, 523.25, 392.00, 329.63, 293.66, 349.23,
+          261.63, 329.63, 392.00, 523.25, 587.33, 523.25, 493.88, 392.00,
+          220.00, 261.63, 329.63, 440.00, 392.00, 329.63, 293.66, 246.94,
+          261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25
+        ];
+        const bass = [
+          130.81, 130.81, 196.00, 196.00, 146.83, 146.83, 174.61, 174.61,
+          130.81, 130.81, 196.00, 196.00, 146.83, 146.83, 196.00, 196.00,
+          110.00, 110.00, 164.81, 164.81, 146.83, 146.83, 123.47, 123.47,
+          130.81, 146.83, 164.81, 174.61, 196.00, 196.00, 130.81, 130.81
+        ];
+        this.bgmTimer = setInterval(() => {
+          if (!this.enabled || !this.ctx) return;
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume().catch(() => {});
+          }
+          const now = this.ctx.currentTime;
+          const freq = melody[this.bgmStep % melody.length];
+          const bFreq = bass[this.bgmStep % bass.length];
+
+          // Lead synth (clearly audible warm triangle + square overtone)
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+          gain.gain.setValueAtTime(0.095, now);
+          gain.gain.exponentialRampToValueAtTime(0.002, now + 0.19);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.2);
+
+          // Bass synth every 2 steps
+          if (this.bgmStep % 2 === 0) {
+            const bOsc = this.ctx.createOscillator();
+            const bGain = this.ctx.createGain();
+            bOsc.type = 'sawtooth';
+            bOsc.frequency.setValueAtTime(bFreq, now);
+            bGain.gain.setValueAtTime(0.065, now);
+            bGain.gain.exponentialRampToValueAtTime(0.002, now + 0.34);
+            bOsc.connect(bGain);
+            bGain.connect(this.ctx.destination);
+            bOsc.start(now);
+            bOsc.stop(now + 0.35);
+          }
+
+          this.bgmStep++;
+        }, 210);
+      }
+
+      stopBGM() {
+        if (this.bgmTimer) {
+          clearInterval(this.bgmTimer);
+          this.bgmTimer = null;
+        }
+      }
+
+      playSfx(type) {
+        if (!this.enabled) return;
+        this.ensureContext();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        if (type === 'scalpel') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(980, now);
+          osc.frequency.exponentialRampToValueAtTime(340, now + 0.09);
+          g.gain.setValueAtTime(0.14, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.1);
+        } else if (type === 'waterstream') {
+          if (now - this.lastWaterTick < 0.18) return;
+          this.lastWaterTick = now;
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(360 + Math.random() * 180, now);
+          osc.frequency.exponentialRampToValueAtTime(190, now + 0.12);
+          g.gain.setValueAtTime(0.07, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.13);
+        } else if (type === 'baseball') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(420, now);
+          osc.frequency.exponentialRampToValueAtTime(140, now + 0.11);
+          g.gain.setValueAtTime(0.09, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        } else if (type === 'arrow') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(680, now);
+          osc.frequency.exponentialRampToValueAtTime(260, now + 0.1);
+          g.gain.setValueAtTime(0.05, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.11);
+        } else if (type === 'sniper') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(45, now + 0.25);
+          g.gain.setValueAtTime(0.16, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.26);
+        } else if (type === 'fireball') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(520, now + 0.15);
+          osc.frequency.exponentialRampToValueAtTime(90, now + 0.3);
+          g.gain.setValueAtTime(0.11, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.31);
+        } else if (type === 'bazooka') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(130, now);
+          osc.frequency.exponentialRampToValueAtTime(35, now + 0.32);
+          g.gain.setValueAtTime(0.15, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.33);
+        } else if (type === 'pistol') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(110, now + 0.12);
+          g.gain.setValueAtTime(0.12, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.13);
+        } else if (type === 'machinegun') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(320, now);
+          osc.frequency.exponentialRampToValueAtTime(85, now + 0.06);
+          g.gain.setValueAtTime(0.08, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.07);
+        } else if (type === 'coin') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(987.77, now);
+          osc.frequency.setValueAtTime(1318.51, now + 0.06);
+          g.gain.setValueAtTime(0.07, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.19);
+        } else if (type === 'upgrade') {
+          [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(f, now + idx * 0.06);
+            g.gain.setValueAtTime(0.09, now + idx * 0.06);
+            g.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.16);
+            osc.connect(g);
+            g.connect(this.ctx.destination);
+            osc.start(now + idx * 0.06);
+            osc.stop(now + idx * 0.06 + 0.17);
+          });
+        } else if (type === 'handwash') {
+          // Synthesize rushing water white-noise filter sweep
+          const bufferSize = this.ctx.sampleRate * 1.8;
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(300, now);
+          filter.frequency.exponentialRampToValueAtTime(1600, now + 0.7);
+          filter.frequency.exponentialRampToValueAtTime(400, now + 1.8);
+          const g = this.ctx.createGain();
+          g.gain.setValueAtTime(0.01, now);
+          g.gain.linearRampToValueAtTime(0.28, now + 0.35);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+          noise.connect(filter);
+          filter.connect(g);
+          g.connect(this.ctx.destination);
+          noise.start(now);
+          noise.stop(now + 1.8);
+        } else if (type === 'castlehit') {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(150, now);
+          osc.frequency.linearRampToValueAtTime(55, now + 0.4);
+          g.gain.setValueAtTime(0.2, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.42);
+        }
+      }
+    }
+
+    const sound = new SoundSystem();
+
+    // =========================================================================
+    // 2. GAME DATA: BACTERIA & ANTIBIOTIC DAMAGE MATRIX
+    // =========================================================================
+    const BACTERIA_SPECS = {
+      entero:    { id: 'entero',    name: '腸桿菌',      hp: 100, color: 0xef4444 },
+      staph:     { id: 'staph',     name: '葡萄球菌',    hp: 100, color: 0xfacc15 },
+      pseudo:    { id: 'pseudo',    name: '綠膿桿菌',    hp: 100, color: 0x22c55e },
+      anaerobe:  { id: 'anaerobe',  name: '厭氧菌',      hp: 100, color: 0x1e293b },
+      esbl:      { id: 'esbl',      name: 'ESBL',        hp: 100, color: 0xef4444, shield: 'silver' },
+      cre:       { id: 'cre',       name: 'CRE',         hp: 100, color: 0xef4444, shield: 'gold' },
+      candida:   { id: 'candida',   name: '念珠菌',      hp: 100, color: 0xf8fafc },
+      mrsa:      { id: 'mrsa',      name: 'MRSA',        hp: 100, color: 0xfacc15, shield: 'silver' },
+      acineto:   { id: 'acineto',   name: '不動桿菌',    hp: 100, color: 0xf87171 }
+    };
+
+    // Exact damage specifications from prompt
+    const ANTIBIOTIC_SPECS = {
+      unasyn: {
+        id: 'unasyn',
+        name: 'Unasyn (醫師)',
+        cost: 0,
+        interval: 0.8,
+        continuous: false,
+        damage: { entero: 40, staph: 40, anaerobe: 40, acineto: 30 }
+      },
+      tigecycline: {
+        id: 'tigecycline',
+        name: 'Tigecycline (騎虎醫師)',
+        cost: 5,
+        intervalStage1: 0.8,
+        intervalStage2: 0.5,
+        continuous: false,
+        damage: { entero: 60, staph: 50, anaerobe: 40, esbl: 40, cre: 20, mrsa: 40, acineto: 25 }
+      },
+      ertapenem: {
+        id: 'ertapenem',
+        name: 'Ertapenem',
+        subtitle: '棒球少年',
+        cost: 5,
+        interval: 1.2,
+        continuous: false,
+        sfx: 'baseball',
+        damage: { entero: 55, staph: 40, esbl: 60, anaerobe: 35 }
+      },
+      meropenem: {
+        id: 'meropenem',
+        name: 'Meropenem',
+        subtitle: '紅衣消防員',
+        cost: 10, // Upgrade from Ertapenem
+        interval: 0.1, // Continuous stream ticks 10x/sec (damage is per-second)
+        continuous: true,
+        damagePerSec: { entero: 100, esbl: 70, staph: 40, anaerobe: 50, pseudo: 50 },
+        damage: { entero: 100, esbl: 70, staph: 40, anaerobe: 50, pseudo: 50 }
+      },
+      ciprofloxacin: {
+        id: 'ciprofloxacin',
+        name: 'Ciprofloxacin',
+        subtitle: '蘿拉弓箭少女',
+        cost: 5,
+        interval: 1.2,
+        continuous: false,
+        sfx: 'arrow',
+        damage: { entero: 100, esbl: 25, cre: 10, pseudo: 100, staph: 10 }
+      },
+      zavicefta: {
+        id: 'zavicefta',
+        name: 'Zavicefta',
+        subtitle: '黑白女僕狙擊手',
+        cost: 15,
+        interval: 3.0,
+        continuous: false,
+        sfx: 'sniper',
+        damage: { entero: 100, esbl: 100, cre: 100, pseudo: 50, staph: 10 }
+      },
+      erasix: {
+        id: 'erasix',
+        name: 'Erasix',
+        subtitle: '紅斗篷火球法師',
+        cost: 10,
+        interval: 2.4,
+        continuous: false,
+        sfx: 'fireball',
+        damage: { candida: 100 }
+      },
+      teicoplanin: {
+        id: 'teicoplanin',
+        name: 'Teicoplanin',
+        subtitle: '水手服火箭筒女生',
+        cost: 10,
+        interval: 3.0,
+        continuous: false,
+        sfx: 'bazooka',
+        damage: { staph: 60, mrsa: 100 }
+      },
+
+      polymyxin: {
+        id: 'polymyxin',
+        name: 'Polymyxin',
+        subtitle: '拿手槍的牛仔',
+        cost: 10,
+        interval: 1.0,
+        continuous: false,
+        sfx: 'pistol',
+        damage: { entero: 25, esbl: 25, cre: 20, pseudo: 25, acineto: 30 }
+      }
+    };
+
+    // Wave allowed buildable towers & upgrade flag (Metronidazole removed; Polymyxin from Wave 3)
+    function getWavePermissions(wave) {
+      if (wave === 1) return { build: [], canUpgradeMero: false };
+      if (wave === 2) return { build: ['ertapenem'], canUpgradeMero: false };
+      if (wave === 3) return { build: ['ertapenem', 'ciprofloxacin', 'polymyxin'], canUpgradeMero: true };
+      if (wave === 4) return { build: ['ertapenem', 'ciprofloxacin', 'polymyxin', 'zavicefta'], canUpgradeMero: true };
+      if (wave === 5) return { build: ['ertapenem', 'ciprofloxacin', 'polymyxin', 'teicoplanin', 'zavicefta'], canUpgradeMero: true };
+      return { build: ['ertapenem', 'ciprofloxacin', 'polymyxin', 'teicoplanin', 'erasix', 'zavicefta'], canUpgradeMero: true };
+    }
+
+    // Generate shuffled bacteria list for each wave
+    function generateWaveEnemies(wave) {
+      let list = [];
+      const pushMany = (type, count) => {
+        for (let i = 0; i < count; i++) list.push(type);
+      };
+
+      if (wave === 1) {
+        pushMany('entero', 10);
+      } else if (wave === 2) {
+        pushMany('entero', 20);
+        pushMany('esbl', 10);
+        pushMany('staph', 10);
+      } else if (wave === 3) {
+        pushMany('entero', 20);
+        pushMany('esbl', 20);
+        pushMany('pseudo', 10);
+        pushMany('staph', 10);
+      } else if (wave === 4) {
+        // Prompt: 腸桿菌 30 ESBL 30 CRE 20 腸球菌/葡萄球菌 10 綠膿桿菌 10
+        pushMany('entero', 30);
+        pushMany('esbl', 30);
+        pushMany('cre', 20);
+        pushMany('staph', 10);
+        pushMany('pseudo', 10);
+      } else if (wave === 5) {
+        pushMany('entero', 30);
+        pushMany('esbl', 30);
+        pushMany('cre', 30);
+        pushMany('anaerobe', 10);
+        pushMany('staph', 20);
+        pushMany('mrsa', 10);
+      } else if (wave === 6) {
+        pushMany('entero', 40);
+        pushMany('esbl', 30);
+        pushMany('cre', 30);
+        pushMany('candida', 20);
+        pushMany('mrsa', 20);
+      } else {
+        // Wave 7+:
+        // Wave 7 has 150 bacteria, each subsequent wave +10% total count.
+        // Candida, MRSA, Pseudomonas, CRE each increase by +1% per wave starting from wave 7 up to 20% max each.
+        const steps = wave - 7;
+        const totalCount = Math.round(150 * Math.pow(1.10, steps));
+        // Base ratio at Wave 7: 13% + steps * 1%, capped at 20%
+        const specialRatio = Math.min(0.20, 0.13 + steps * 0.01);
+        const otherRatio = (1 - specialRatio * 4) / 5;
+
+        const weights = [
+          { type: 'candida', w: specialRatio },
+          { type: 'mrsa',    w: specialRatio },
+          { type: 'pseudo',  w: specialRatio },
+          { type: 'cre',     w: specialRatio },
+          { type: 'acineto', w: otherRatio },
+          { type: 'entero',  w: otherRatio },
+          { type: 'esbl',    w: otherRatio },
+          { type: 'staph',   w: otherRatio },
+          { type: 'anaerobe',w: otherRatio }
+        ];
+
+        for (let i = 0; i < totalCount; i++) {
+          let r = Math.random();
+          let acc = 0;
+          let chosen = 'entero';
+          for (const item of weights) {
+            acc += item.w;
+            if (r <= acc) {
+              chosen = item.type;
+              break;
+            }
+          }
+          list.push(chosen);
+        }
+      }
+
+      // Shuffle for mixed appearance
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    }
+
+    // =========================================================================
+    // 3. THREE.JS SCENE, S-CURVE HOSPITAL CORRIDOR FIELD & CAMERA SETUP
+    // =========================================================================
+    const container = document.getElementById('game-canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a);
+    scene.fog = new THREE.FogExp2(0x0f172a, 0.0045);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 400);
+    // Fixed camera offset so we view characters from behind/above at a constant angle
+    const CAMERA_OFFSET = new THREE.Vector3(0, 42, 34);
+    const CAMERA_LOOK_OFFSET = new THREE.Vector3(0, 0, -6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.72);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xf8fafc, 0.9);
+    dirLight.position.set(25, 65, 35);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    dirLight.shadow.camera.near = 10;
+    dirLight.shadow.camera.far = 180;
+    const d = 65;
+    dirLight.shadow.camera.left = -d;
+    dirLight.shadow.camera.right = d;
+    dirLight.shadow.camera.top = d;
+    dirLight.shadow.camera.bottom = -d;
+    scene.add(dirLight);
+
+    // Rectangular Field Dimensions (Larger than screen, player moves to reveal)
+    const FIELD_WIDTH = 90;
+    const FIELD_HEIGHT = 120;
+
+    // S-shaped curved path waypoints (starts at Z = +50 and winds up to the Hospital at Z = -48 so the Hospital front faces the player camera!)
+    const rawWaypoints = [
+      new THREE.Vector3(-26, 0,  50),
+      new THREE.Vector3(24,  0,  34),
+      new THREE.Vector3(26,  0,  14),
+      new THREE.Vector3(-25, 0, -2),
+      new THREE.Vector3(-25, 0, -22),
+      new THREE.Vector3(22,  0, -34),
+      new THREE.Vector3(0,   0, -48)
+    ];
+    const pathCurve = new THREE.CatmullRomCurve3(rawWaypoints);
+    const PATH_SAMPLES = 220;
+    const pathPoints = pathCurve.getPoints(PATH_SAMPLES);
+
+    // 8 Defense Pad coordinates along the S-curve
+    const PAD_COORDS = [
+      { id: 1, x: -6,  z:  48 },
+      { id: 2, x: 12,  z:  32 },
+      { id: 3, x: 34,  z:  22 },
+      { id: 4, x: 6,   z:  10 },
+      { id: 5, x: -12, z: -4 },
+      { id: 6, x: -34, z: -14 },
+      { id: 7, x: -2,  z: -26 },
+      { id: 8, x: 16,  z: -42 }
+    ];
+
+    // Build Rich Hospital Interior Environment & Props
+    function buildHospitalEnvironment() {
+      const envGroup = new THREE.Group();
+
+      // Main Hospital Floor (Clean clinical tile floor with subtle medical grid & cross motifs)
+      const floorCanvas = document.createElement('canvas');
+      floorCanvas.width = 256;
+      floorCanvas.height = 256;
+      const fctx = floorCanvas.getContext('2d');
+      fctx.fillStyle = '#1e293b';
+      fctx.fillRect(0, 0, 256, 256);
+      // Checkerboard subtle clinical tint
+      fctx.fillStyle = '#243247';
+      fctx.fillRect(0, 0, 128, 128);
+      fctx.fillRect(128, 128, 128, 128);
+      fctx.strokeStyle = '#334155';
+      fctx.lineWidth = 3;
+      fctx.strokeRect(0, 0, 128, 128);
+      fctx.strokeRect(128, 128, 128, 128);
+      fctx.strokeRect(128, 0, 128, 128);
+      fctx.strokeRect(0, 128, 128, 128);
+      // Subtle teal medical cross in tile corners
+      fctx.fillStyle = 'rgba(56, 189, 248, 0.14)';
+      fctx.fillRect(58, 48, 12, 32);
+      fctx.fillRect(48, 58, 32, 12);
+      const floorTex = new THREE.CanvasTexture(floorCanvas);
+      floorTex.wrapS = THREE.RepeatWrapping;
+      floorTex.wrapT = THREE.RepeatWrapping;
+      floorTex.repeat.set(18, 24);
+
+      const floorGeo = new THREE.PlaneGeometry(FIELD_WIDTH, FIELD_HEIGHT);
+      const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.8 });
+      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      envGroup.add(floorMesh);
+
+      // Hospital Perimeter Walls with Mint-Green Wainscoting & Handrails
+      const wallUpperMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.5 });
+      const wallLowerMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.45 });
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.4 });
+
+      const addHospitalWall = (w, d, x, z) => {
+        const lower = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), wallLowerMat);
+        lower.position.set(x, 0.8, z);
+        const upper = new THREE.Mesh(new THREE.BoxGeometry(w, 2.2, d), wallUpperMat);
+        upper.position.set(x, 2.7, z);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.22, d + 0.1), railMat);
+        rail.position.set(x, 1.65, z);
+        envGroup.add(lower, upper, rail);
+      };
+      addHospitalWall(FIELD_WIDTH + 2, 2, 0, -FIELD_HEIGHT / 2 - 1);
+      addHospitalWall(FIELD_WIDTH + 2, 2, 0, FIELD_HEIGHT / 2 + 1);
+      addHospitalWall(2, FIELD_HEIGHT + 2, -FIELD_WIDTH / 2 - 1, 0);
+      addHospitalWall(2, FIELD_HEIGHT + 2, FIELD_WIDTH / 2 + 1, 0);
+
+      // S-Shaped Hospital Corridor Path Tiles with Glowing Medical Guide Strips
+      const corridorMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.4, transparent: true, opacity: 0.36 });
+      const edgeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+      const lineMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+      for (let i = 0; i < pathPoints.length - 1; i++) {
+        const p1 = pathPoints[i];
+        const p2 = pathPoints[i + 1];
+        const segLen = p1.distanceTo(p2) + 0.35;
+        const mid = p1.clone().add(p2).multiplyScalar(0.5);
+        const angle = Math.atan2(p2.x - p1.x, p2.z - p1.z);
+
+        const tile = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.08, segLen), corridorMat);
+        tile.position.set(mid.x, 0.04, mid.z);
+        tile.rotation.y = angle;
+        tile.receiveShadow = true;
+        envGroup.add(tile);
+
+        if (i % 4 === 0) {
+          const dash = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.1, segLen * 1.2), lineMat);
+          dash.position.set(mid.x, 0.06, mid.z);
+          dash.rotation.y = angle;
+          envGroup.add(dash);
+        }
+        if (i % 18 === 0 && i > 10 && i < pathPoints.length - 20) {
+          // Green Emergency Corridor Floor Cross Decal
+          const cH = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.11, 0.45), edgeMat);
+          const cV = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.11, 1.8), edgeMat);
+          cH.position.set(mid.x, 0.065, mid.z);
+          cV.position.set(mid.x, 0.065, mid.z);
+          envGroup.add(cH, cV);
+        }
+      }
+
+      // Spawn Biohazard Portal at Start of Path
+      const spawnPortal = new THREE.Group();
+      const ringGeo = new THREE.TorusGeometry(3.4, 0.38, 14, 36);
+      const ringMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x991b1b });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 0.25;
+      spawnPortal.add(ring);
+      spawnPortal.position.copy(rawWaypoints[0]);
+      envGroup.add(spawnPortal);
+
+      // Rich Hospital Corridor Props (Cross Pillars, Nurses Station, Waiting Chairs, ECG Monitors, Wheelchairs, Beds, Medicine Cabinets, IV Stands)
+      const propPositions = [
+        { x: -36, z: -40, type: 'pillar' },
+        { x:  36, z: -42, type: 'cabinet' },
+        { x: -36, z: -18, type: 'bed' },
+        { x: -36, z: -12, type: 'ecg' },
+        { x:  38, z:  -4, type: 'nursedesk' },
+        { x:  38, z:   8, type: 'pillar' },
+        { x: -38, z:  34, type: 'cabinet' },
+        { x:  36, z:  36, type: 'bed' },
+        { x: -18, z: -22, type: 'iv' },
+        { x:  18, z:  14, type: 'iv' },
+        { x: -20, z:  36, type: 'chairs' },
+        { x:  22, z: -46, type: 'wheelchair' },
+        { x: -34, z:   6, type: 'wheelchair' }
+      ];
+
+      propPositions.forEach(p => {
+        if (p.type === 'pillar') {
+          const pillar = new THREE.Group();
+          const col = new THREE.Mesh(
+            new THREE.BoxGeometry(3.4, 6.8, 3.4),
+            new THREE.MeshStandardMaterial({ color: 0xf8fafc })
+          );
+          col.position.y = 3.4;
+          col.castShadow = true;
+          const stripe = new THREE.Mesh(
+            new THREE.BoxGeometry(3.5, 1.2, 3.5),
+            new THREE.MeshStandardMaterial({ color: 0x0d9488 })
+          );
+          stripe.position.y = 1.6;
+          pillar.add(col, stripe);
+          const crossMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+          const c1 = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.55, 0.2), crossMat);
+          const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 1.9, 0.2), crossMat);
+          c1.position.set(0, 4.7, 1.75);
+          c2.position.set(0, 4.7, 1.75);
+          pillar.add(c1, c2);
+          pillar.position.set(p.x, 0, p.z);
+          envGroup.add(pillar);
+        } else if (p.type === 'cabinet') {
+          const cab = new THREE.Group();
+          const box = new THREE.Mesh(
+            new THREE.BoxGeometry(4.2, 4.8, 2.1),
+            new THREE.MeshStandardMaterial({ color: 0xe2e8f0 })
+          );
+          box.position.y = 2.4;
+          box.castShadow = true;
+          const glass = new THREE.Mesh(
+            new THREE.BoxGeometry(3.6, 2.2, 0.15),
+            new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6 })
+          );
+          glass.position.set(0, 3.1, 1.05);
+          cab.add(box, glass);
+          cab.position.set(p.x, 0, p.z);
+          envGroup.add(cab);
+        } else if (p.type === 'bed') {
+          const bed = new THREE.Group();
+          const mattress = new THREE.Mesh(
+            new THREE.BoxGeometry(4.8, 0.9, 2.5),
+            new THREE.MeshStandardMaterial({ color: 0xf8fafc })
+          );
+          mattress.position.y = 1.1;
+          mattress.castShadow = true;
+          const blanket = new THREE.Mesh(
+            new THREE.BoxGeometry(3.2, 0.95, 2.55),
+            new THREE.MeshStandardMaterial({ color: 0x38bdf8 })
+          );
+          blanket.position.set(0.7, 1.12, 0);
+          const headboard = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 2.2, 2.6),
+            new THREE.MeshStandardMaterial({ color: 0x94a3b8 })
+          );
+          headboard.position.set(-2.35, 1.3, 0);
+          const pillow = new THREE.Mesh(
+            new THREE.BoxGeometry(1.0, 0.35, 1.8),
+            new THREE.MeshStandardMaterial({ color: 0xffffff })
+          );
+          pillow.position.set(-1.5, 1.65, 0);
+          bed.add(mattress, blanket, headboard, pillow);
+          bed.position.set(p.x, 0, p.z);
+          envGroup.add(bed);
+        } else if (p.type === 'iv') {
+          const iv = new THREE.Group();
+          const base = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.12, 10), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+          base.position.y = 0.06;
+          const pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 4.4, 8),
+            new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.7 })
+          );
+          pole.position.y = 2.2;
+          const bag = new THREE.Mesh(
+            new THREE.SphereGeometry(0.45, 12, 12),
+            new THREE.MeshStandardMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.88 })
+          );
+          bag.scale.set(0.7, 1.3, 0.5);
+          bag.position.set(0.38, 3.8, 0);
+          iv.add(base, pole, bag);
+          iv.position.set(p.x, 0, p.z);
+          envGroup.add(iv);
+        } else if (p.type === 'ecg') {
+          const ecg = new THREE.Group();
+          const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.35, 2.2, 10), new THREE.MeshStandardMaterial({ color: 0x94a3b8 }));
+          stand.position.y = 1.1;
+          const monitor = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 0.9), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+          monitor.position.y = 2.5;
+          const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.85), new THREE.MeshBasicMaterial({ color: 0x10b981 }));
+          screen.position.set(0, 2.5, 0.46);
+          ecg.add(stand, monitor, screen);
+          ecg.position.set(p.x, 0, p.z);
+          envGroup.add(ecg);
+        } else if (p.type === 'nursedesk') {
+          const desk = new THREE.Group();
+          const counter = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.1, 6.2), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+          counter.position.y = 1.05;
+          counter.castShadow = true;
+          const topTrim = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.25, 6.4), new THREE.MeshStandardMaterial({ color: 0x0ea5e9 }));
+          topTrim.position.y = 2.15;
+          desk.add(counter, topTrim);
+          desk.position.set(p.x, 0, p.z);
+          envGroup.add(desk);
+        } else if (p.type === 'chairs') {
+          const row = new THREE.Group();
+          const bar = new THREE.Mesh(new THREE.BoxGeometry(5.5, 0.15, 0.8), new THREE.MeshStandardMaterial({ color: 0x64748b }));
+          bar.position.y = 0.7;
+          row.add(bar);
+          [-2.0, -0.65, 0.65, 2.0].forEach(cx => {
+            const seat = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+            seat.position.set(cx, 0.85, 0);
+            const back = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.1, 0.2), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+            back.position.set(cx, 1.4, -0.45);
+            row.add(seat, back);
+          });
+          row.position.set(p.x, 0, p.z);
+          envGroup.add(row);
+        } else if (p.type === 'wheelchair') {
+          const wc = new THREE.Group();
+          const seat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 1.4), new THREE.MeshStandardMaterial({ color: 0x1e3a8a }));
+          seat.position.y = 1.1;
+          const back = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.3, 0.2), new THREE.MeshStandardMaterial({ color: 0x1e3a8a }));
+          back.position.set(0, 1.75, -0.6);
+          [-0.78, 0.78].forEach(wx => {
+            const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.65, 0.09, 8, 18), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+            wheel.rotation.y = Math.PI / 2;
+            wheel.position.set(wx, 0.72, 0);
+            wc.add(wheel);
+          });
+          wc.add(seat, back);
+          wc.position.set(p.x, 0, p.z);
+          envGroup.add(wc);
+        }
+      });
+
+      scene.add(envGroup);
+    }
+
+    buildHospitalEnvironment();
+
+    // Build Modern Hospital Building Facing the Player Camera (+Z) with Prominent Green Cross Emblem
+    const castleGroup = new THREE.Group();
+    function buildCastleMesh() {
+      const wallWhite = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.42 });
+      const greenAccent = new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.35 });
+      const windowGlass = new THREE.MeshStandardMaterial({ color: 0x7dd3fc, metalness: 0.6, roughness: 0.15, emissive: 0x0284c7, emissiveIntensity: 0.28 });
+      const crossGreen = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x059669, emissiveIntensity: 0.6 });
+      const goldTrim = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.75, roughness: 0.2 });
+
+      // Main Multi-Story Hospital Building Center Tower (shifted slightly back in -Z so front entrance is right at the endpoint)
+      const mainWing = new THREE.Mesh(new THREE.BoxGeometry(12.2, 9.8, 7.2), wallWhite);
+      mainWing.position.set(0, 4.9, -3.6);
+      mainWing.castShadow = true;
+      castleGroup.add(mainWing);
+
+      // Left & Right Medical Wings
+      [-7.6, 7.6].forEach(wx => {
+        const sideWing = new THREE.Mesh(new THREE.BoxGeometry(4.4, 7.2, 6.2), wallWhite);
+        sideWing.position.set(wx, 3.6, -3.8);
+        sideWing.castShadow = true;
+        const sideRoof = new THREE.Mesh(new THREE.BoxGeometry(4.7, 0.5, 6.5), greenAccent);
+        sideRoof.position.set(wx, 7.35, -3.8);
+        castleGroup.add(sideWing, sideRoof);
+      });
+
+      // Roof Parapet & Rooftop Helipad with "H" Marking
+      const roofRim = new THREE.Mesh(new THREE.BoxGeometry(12.6, 0.6, 7.6), greenAccent);
+      roofRim.position.set(0, 9.95, -3.6);
+      const helipadCircle = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.6, 2.6, 0.14, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b })
+      );
+      helipadCircle.position.set(0, 10.3, -3.6);
+      const heliRing = new THREE.Mesh(
+        new THREE.RingGeometry(2.1, 2.4, 24),
+        new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide })
+      );
+      heliRing.rotation.x = -Math.PI / 2;
+      heliRing.position.set(0, 10.38, -3.6);
+      castleGroup.add(roofRim, helipadCircle, heliRing);
+
+      // Glowing Windows Across Front Facade (+Z face facing player camera!)
+      [5.0, 7.5].forEach(wy => {
+        [-4.1, -2.1, 2.1, 4.1].forEach(wx => {
+          const win = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.45, 0.16), windowGlass);
+          win.position.set(wx, wy, 0.05);
+          castleGroup.add(win);
+        });
+      });
+      [2.8, 5.2].forEach(wy => {
+        [-7.6, 7.6].forEach(wx => {
+          const win = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.35, 0.16), windowGlass);
+          win.position.set(wx, wy, -0.68);
+          castleGroup.add(win);
+        });
+      });
+
+      // Front Entrance Canopy, Pillars & Sliding Glass Doors Facing Camera (+Z)
+      const canopy = new THREE.Mesh(new THREE.BoxGeometry(6.2, 0.48, 2.8), greenAccent);
+      canopy.position.set(0, 3.85, 1.1);
+      [-2.6, 2.6].forEach(px => {
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 3.8, 12), wallWhite);
+        col.position.set(px, 1.9, 2.1);
+        castleGroup.add(col);
+      });
+      const erSignTex = makeTextTexture('HOSPITAL 綜合醫院', '#ecfdf5', '#047857');
+      const erSign = new THREE.Mesh(
+        new THREE.BoxGeometry(5.4, 1.15, 0.28),
+        new THREE.MeshBasicMaterial({ map: erSignTex })
+      );
+      erSign.position.set(0, 4.65, 1.25);
+
+      const slidingDoors = new THREE.Mesh(
+        new THREE.BoxGeometry(3.8, 3.4, 0.3),
+        windowGlass
+      );
+      slidingDoors.position.set(0, 1.7, 0.05);
+      castleGroup.add(canopy, erSign, slidingDoors);
+
+      // Giant Glowing GREEN Medical Cross Emblem on Upper Front Facade & Rooftop Crest (Clearly visible from Player Camera!)
+      const crossBack = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.15, 2.15, 0.3, 28),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      crossBack.rotation.x = Math.PI / 2;
+      crossBack.position.set(0, 7.8, 0.12);
+      const crossRim = new THREE.Mesh(
+        new THREE.TorusGeometry(2.15, 0.14, 10, 28),
+        goldTrim
+      );
+      crossRim.position.set(0, 7.8, 0.22);
+      const cH = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.92, 0.38), crossGreen);
+      const cV = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.9, 0.38), crossGreen);
+      cH.position.set(0, 7.8, 0.25);
+      cV.position.set(0, 7.8, 0.25);
+
+      // Additional Giant Standing Green Cross Sign on Rooftop for long-range visibility
+      const roofCrossH = new THREE.Mesh(new THREE.BoxGeometry(3.4, 1.05, 0.45), crossGreen);
+      const roofCrossV = new THREE.Mesh(new THREE.BoxGeometry(1.05, 3.4, 0.45), crossGreen);
+      roofCrossH.position.set(0, 12.1, -1.2);
+      roofCrossV.position.set(0, 12.1, -1.2);
+      castleGroup.add(crossBack, crossRim, cH, cV, roofCrossH, roofCrossV);
+
+      // Cute 3D Ambulance with Green Cross Parked in Front of the Right Wing
+      const amb = new THREE.Group();
+      const ambBody = new THREE.Mesh(new THREE.BoxGeometry(3.8, 2.2, 2.2), wallWhite);
+      ambBody.position.y = 1.4;
+      ambBody.castShadow = true;
+      const ambStripe = new THREE.Mesh(new THREE.BoxGeometry(3.86, 0.42, 2.24), crossGreen);
+      ambStripe.position.y = 1.25;
+      const ambCab = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.55, 2.1), wallWhite);
+      ambCab.position.set(-2.3, 1.08, 0);
+      const windshield = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.85, 1.8), windowGlass);
+      windshield.position.set(-2.95, 1.35, 0);
+      const sirenG = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.45), crossGreen);
+      sirenG.position.set(-1.3, 2.6, 0.4);
+      const sirenB = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.45), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+      sirenB.position.set(-1.3, 2.6, -0.4);
+      [[-2.1, 1.1], [-2.1, -1.1], [1.0, 1.1], [1.0, -1.1]].forEach(([wx, wz]) => {
+        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.32, 12), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(wx, 0.48, wz);
+        amb.add(wheel);
+      });
+      amb.add(ambBody, ambStripe, ambCab, windshield, sirenG, sirenB);
+      amb.position.set(10.2, 0, -0.5);
+      amb.rotation.y = -0.45;
+      castleGroup.add(amb);
+
+      castleGroup.position.copy(rawWaypoints[rawWaypoints.length - 1]);
+      scene.add(castleGroup);
+    }
+    buildCastleMesh();
+
+    // =========================================================================
+    // 4. 3D MODELS: DOCTOR (UNASYN), 7 ANTIBIOTIC DEFENDERS, 8 Q-BACTERIA
+    // =========================================================================
+
+    // Helper: create Unasyn label texture for Doctor's coat
+    function makeTextTexture(text, bgColor, textColor) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, 256, 128);
+      ctx.fillStyle = textColor;
+      ctx.font = '900 44px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 64);
+      return new THREE.CanvasTexture(c);
+    }
+
+    const bacteriaNameTexCache = {};
+    function getBacteriaNameTexture(name) {
+      if (bacteriaNameTexCache[name]) return bacteriaNameTexCache[name];
+      const c = document.createElement('canvas');
+      c.width = 384;
+      c.height = 112;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
+      ctx.beginPath();
+      ctx.roundRect(8, 8, 368, 96, 22);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(250, 204, 21, 0.75)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 62px "Noto Sans TC", Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(name, 192, 58);
+      const tex = new THREE.CanvasTexture(c);
+      bacteriaNameTexCache[name] = tex;
+      return tex;
+    }
+
+    // Helper: create kawaii anime eyes with sparkling highlights & rosy pink cheek blushes
+    function addCuteEyes(parent, yPos, zPos, spacing = 0.28, scale = 1.0) {
+      const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const pupilMat = new THREE.MeshBasicMaterial({ color: 0x0f172a });
+      const blushMat = new THREE.MeshBasicMaterial({ color: 0xfb7185, transparent: true, opacity: 0.78 });
+      [-spacing, spacing].forEach(ex => {
+        const white = new THREE.Mesh(new THREE.SphereGeometry(0.155 * scale, 12, 12), eyeWhiteMat);
+        white.position.set(ex, yPos, zPos);
+        const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.095 * scale, 12, 12), pupilMat);
+        pupil.position.set(ex, yPos, zPos + 0.095 * scale);
+        // Cute anime sparkle catchlight
+        const glint = new THREE.Mesh(new THREE.SphereGeometry(0.038 * scale, 8, 8), eyeWhiteMat);
+        glint.position.set(ex + 0.035 * scale, yPos + 0.042 * scale, zPos + 0.165 * scale);
+        // Rosy pink cheek blush below each eye
+        const blush = new THREE.Mesh(new THREE.SphereGeometry(0.085 * scale, 10, 10), blushMat);
+        blush.scale.set(1.45, 0.72, 0.55);
+        blush.position.set(ex * 1.38, yPos - 0.14 * scale, zPos + 0.04 * scale);
+        parent.add(white, pupil, glint, blush);
+      });
+    }
+
+    // Create Ornate Silver or Gold Shield clearly held in hand with glowing emblem & rivets
+    function createShieldMesh(tier) {
+      const shieldGroup = new THREE.Group();
+      const mainColor = tier === 'gold' ? 0xfacc15 : 0xf1f5f9;
+      const rimColor = tier === 'gold' ? 0xb45309 : 0x475569;
+      const gemColor = tier === 'gold' ? 0xef4444 : 0x0ea5e9;
+
+      const plate = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.02, 0.8, 0.24, 6),
+        new THREE.MeshStandardMaterial({ color: mainColor, metalness: 0.82, roughness: 0.18 })
+      );
+      plate.rotation.x = Math.PI / 2;
+
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.94, 0.11, 10, 6),
+        new THREE.MeshStandardMaterial({ color: rimColor, metalness: 0.85, roughness: 0.2 })
+      );
+
+      // Center Gem Boss + Cross Crest on Shield
+      const boss = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 12, 12),
+        new THREE.MeshStandardMaterial({ color: gemColor, emissive: gemColor, emissiveIntensity: 0.35 })
+      );
+      boss.position.z = 0.13;
+      const cH = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.16, 0.08), new THREE.MeshStandardMaterial({ color: rimColor }));
+      const cV = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.95, 0.08), new THREE.MeshStandardMaterial({ color: rimColor }));
+      cH.position.z = 0.12;
+      cV.position.z = 0.12;
+
+      shieldGroup.add(plate, rim, cH, cV, boss);
+      return shieldGroup;
+    }
+
+    // Build Extra-Cute & Detailed Q-version 3D Bacteria Models
+    function createBacteriaModel(type) {
+      const root = new THREE.Group();
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+      const shoeMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+
+      // Two cute stubby walking legs with little white shoes
+      const leftLeg = new THREE.Group();
+      leftLeg.position.set(-0.36, 0.35, 0);
+      const lShin = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.15, 0.65, 10), legMat);
+      const lShoe = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), shoeMat);
+      lShoe.scale.set(1.0, 0.65, 1.35);
+      lShoe.position.set(0, -0.28, 0.08);
+      leftLeg.add(lShin, lShoe);
+
+      const rightLeg = new THREE.Group();
+      rightLeg.position.set(0.36, 0.35, 0);
+      const rShin = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.15, 0.65, 10), legMat);
+      const rShoe = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), shoeMat);
+      rShoe.scale.set(1.0, 0.65, 1.35);
+      rShoe.position.set(0, -0.28, 0.08);
+      rightLeg.add(rShin, rShoe);
+
+      root.add(leftLeg, rightLeg);
+
+      const bodyGroup = new THREE.Group();
+      root.add(bodyGroup);
+
+      if (type === 'entero' || type === 'esbl' || type === 'cre') {
+        // Red sausage-shaped upright walking bacterium with cute antennae, belly patch & little fang smile
+        const sausageMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+        const bellyMat = new THREE.MeshStandardMaterial({ color: 0xfecaca, roughness: 0.4 });
+        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 1.42, 18), sausageMat);
+        cyl.position.y = 1.45;
+        cyl.castShadow = true;
+        const topCap = new THREE.Mesh(new THREE.SphereGeometry(0.7, 18, 14), sausageMat);
+        topCap.position.y = 2.16;
+        const botCap = new THREE.Mesh(new THREE.SphereGeometry(0.7, 18, 14), sausageMat);
+        botCap.position.y = 0.74;
+        // Cute pink belly oval
+        const belly = new THREE.Mesh(new THREE.SphereGeometry(0.48, 14, 12), bellyMat);
+        belly.scale.set(0.95, 1.25, 0.45);
+        belly.position.set(0, 1.32, 0.52);
+        // Cute top antennae (pili)
+        [-0.25, 0.25].forEach(ax => {
+          const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.38, 8), sausageMat);
+          stem.position.set(ax, 2.88, 0);
+          stem.rotation.z = ax > 0 ? -0.3 : 0.3;
+          const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+          bulb.position.set(ax * 1.35, 3.05, 0);
+          bodyGroup.add(stem, bulb);
+        });
+        bodyGroup.add(cyl, topCap, botCap, belly);
+        addCuteEyes(bodyGroup, 1.92, 0.64, 0.26, 1.18);
+
+        // Cute hands
+        const leftArm = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), sausageMat);
+        leftArm.position.set(-0.88, 1.45, 0.28);
+        const rightArm = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), sausageMat);
+        rightArm.position.set(0.88, 1.45, 0.42);
+        bodyGroup.add(leftArm, rightArm);
+
+        if (type === 'esbl' || type === 'cre') {
+          // Knight headband / mini crown for shield bearers
+          const crownColor = type === 'cre' ? 0xfacc15 : 0xe2e8f0;
+          const crown = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.42, 0.35, 0.28, 6),
+            new THREE.MeshStandardMaterial({ color: crownColor, metalness: 0.85, roughness: 0.2 })
+          );
+          crown.position.set(0, 2.82, 0.1);
+          bodyGroup.add(crown);
+
+          const shield = createShieldMesh(type === 'cre' ? 'gold' : 'silver');
+          shield.position.set(0.92, 1.48, 0.82);
+          shield.rotation.y = -0.28;
+          bodyGroup.add(shield);
+          root.userData.shield = shield;
+        }
+      } else if (type === 'staph' || type === 'mrsa') {
+        // Glossy cluster of golden-yellow spheres (grape bunch) with a cute green grape leaf on top
+        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.22, metalness: 0.1 });
+        const offsets = [
+          [0, 1.45, 0, 0.56],
+          [-0.46, 1.35, 0.32, 0.44],
+          [0.46, 1.35, 0.32, 0.44],
+          [0, 1.98, 0.22, 0.46],
+          [-0.38, 1.88, -0.25, 0.42],
+          [0.38, 1.88, -0.25, 0.42],
+          [0, 1.1, 0.42, 0.4],
+          [-0.4, 1.1, -0.3, 0.4],
+          [0.4, 1.1, -0.3, 0.4]
+        ];
+        offsets.forEach(([ox, oy, oz, r]) => {
+          const sp = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 14), yellowMat);
+          sp.position.set(ox, oy, oz);
+          sp.castShadow = true;
+          bodyGroup.add(sp);
+        });
+        // Cute green grape leaf & stem on top
+        const leafMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.4 });
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), leafMat);
+        leaf.scale.set(1.4, 0.3, 0.8);
+        leaf.position.set(0.18, 2.48, 0.15);
+        leaf.rotation.z = -0.3;
+        bodyGroup.add(leaf);
+        addCuteEyes(bodyGroup, 1.98, 0.62, 0.24, 1.12);
+
+        if (type === 'mrsa') {
+          const hand = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 10), yellowMat);
+          hand.position.set(0.92, 1.42, 0.48);
+          bodyGroup.add(hand);
+          const shield = createShieldMesh('silver');
+          shield.position.set(0.98, 1.45, 0.85);
+          shield.rotation.y = -0.28;
+          bodyGroup.add(shield);
+          root.userData.shield = shield;
+        }
+      } else if (type === 'pseudo') {
+        // Green long rod-shaped bacterium walking upright with cute flagellum tail & head tuft
+        const greenMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.28 });
+        const lightGreen = new THREE.MeshStandardMaterial({ color: 0x86efac, roughness: 0.35 });
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 2.0, 16), greenMat);
+        rod.position.y = 1.65;
+        rod.castShadow = true;
+        const top = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 12), greenMat);
+        top.position.y = 2.65;
+        const bot = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 12), greenMat);
+        bot.position.y = 0.65;
+        const belly = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 10), lightGreen);
+        belly.scale.set(0.9, 1.6, 0.45);
+        belly.position.set(0, 1.55, 0.36);
+        // Cute curly flagellum sprout on top
+        const sprout = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 8, 16, Math.PI * 1.3), lightGreen);
+        sprout.position.set(0, 3.25, 0);
+        bodyGroup.add(rod, top, bot, belly, sprout);
+        addCuteEyes(bodyGroup, 2.35, 0.44, 0.2, 1.05);
+      } else if (type === 'anaerobe') {
+        // Black rod-shaped bacterium walking upright with cute little purple devil horns & stubby arms
+        const blackMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35 });
+        const hornMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.3 });
+        const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.54, 0.54, 1.7, 16), blackMat);
+        rod.position.y = 1.5;
+        rod.castShadow = true;
+        const top = new THREE.Mesh(new THREE.SphereGeometry(0.54, 16, 12), blackMat);
+        top.position.y = 2.35;
+        const bot = new THREE.Mesh(new THREE.SphereGeometry(0.54, 16, 12), blackMat);
+        bot.position.y = 0.65;
+        [-0.28, 0.28].forEach(hx => {
+          const horn = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.42, 10), hornMat);
+          horn.position.set(hx, 2.95, 0.1);
+          horn.rotation.z = hx > 0 ? -0.35 : 0.35;
+          bodyGroup.add(horn);
+        });
+        bodyGroup.add(rod, top, bot);
+        addCuteEyes(bodyGroup, 2.12, 0.5, 0.22, 1.08);
+      } else if (type === 'candida') {
+        // Fluffy white budding yeast spheres clustered together with a cute golden angel halo
+        const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+        const offsets = [
+          [0, 1.5, 0, 0.6],
+          [-0.48, 1.4, 0.32, 0.45],
+          [0.48, 1.4, 0.32, 0.45],
+          [0, 2.02, 0.22, 0.48],
+          [-0.4, 1.9, -0.25, 0.43],
+          [0.4, 1.9, -0.25, 0.43],
+          [0, 1.15, 0.42, 0.42]
+        ];
+        offsets.forEach(([ox, oy, oz, r]) => {
+          const sp = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 14), whiteMat);
+          sp.position.set(ox, oy, oz);
+          sp.castShadow = true;
+          bodyGroup.add(sp);
+        });
+        const halo = new THREE.Mesh(
+          new THREE.TorusGeometry(0.38, 0.055, 8, 20),
+          new THREE.MeshBasicMaterial({ color: 0xfef08a })
+        );
+        halo.rotation.x = Math.PI / 2;
+        halo.position.set(0, 2.68, 0.15);
+        bodyGroup.add(halo);
+        addCuteEyes(bodyGroup, 2.02, 0.65, 0.24, 1.12);
+      } else if (type === 'acineto') {
+        // 不動桿菌: Two short chubby red sausage-shaped twin bacteria holding hands side-by-side
+        const shortRedMat = new THREE.MeshStandardMaterial({ color: 0xf87171, roughness: 0.28 });
+        const bellyMat = new THREE.MeshStandardMaterial({ color: 0xfee2e2, roughness: 0.4 });
+        [-0.48, 0.48].forEach(offsetX => {
+          const unit = new THREE.Group();
+          unit.position.set(offsetX, 0, 0);
+          const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.43, 0.43, 0.64, 14), shortRedMat);
+          cyl.position.y = 1.24;
+          cyl.castShadow = true;
+          const topCap = new THREE.Mesh(new THREE.SphereGeometry(0.43, 14, 12), shortRedMat);
+          topCap.position.y = 1.56;
+          const botCap = new THREE.Mesh(new THREE.SphereGeometry(0.43, 14, 12), shortRedMat);
+          botCap.position.y = 0.92;
+          const belly = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), bellyMat);
+          belly.scale.set(0.95, 1.15, 0.4);
+          belly.position.set(0, 1.18, 0.34);
+          unit.add(cyl, topCap, botCap, belly);
+          addCuteEyes(unit, 1.44, 0.4, 0.15, 0.82);
+          bodyGroup.add(unit);
+        });
+      }
+
+      // Floating HP Bar & Overhead Bacteria Name Label
+      const hpGroup = new THREE.Group();
+      hpGroup.position.set(0, 3.45, 0);
+      const bgPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.9, 0.26),
+        new THREE.MeshBasicMaterial({ color: 0x0f172a, side: THREE.DoubleSide })
+      );
+      const fgPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.8, 0.18),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e, side: THREE.DoubleSide })
+      );
+      fgPlane.position.z = 0.02;
+
+      // Enlarged Overhead Name Tag above HP bar
+      const specName = (BACTERIA_SPECS[type] && BACTERIA_SPECS[type].name) || type;
+      const nameTex = getBacteriaNameTexture(specName);
+      const namePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.2, 1.22),
+        new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, side: THREE.DoubleSide, depthTest: false })
+      );
+      namePlane.position.set(0, 0.88, 0.03);
+
+      hpGroup.add(bgPlane, fgPlane, namePlane);
+      root.add(hpGroup);
+
+      root.userData.leftLeg = leftLeg;
+      root.userData.rightLeg = rightLeg;
+      root.userData.hpGroup = hpGroup;
+      root.userData.hpBar = fgPlane;
+      return root;
+    }
+
+    // Build Doctor Player Model (120% scale + high-detail stethoscope, lapels, scalpel, and striped Tiger mount)
+    function createDoctorModel() {
+      const group = new THREE.Group();
+      const modelRoot = new THREE.Group();
+      modelRoot.scale.set(1.2, 1.2, 1.2); // 120% size scale while keeping group unscaled for rangeRing
+      group.add(modelRoot);
+
+      const unasynTex = makeTextTexture('Unasyn', '#ffffff', '#0f766e');
+      const tigeTex = makeTextTexture('Tigecycline', '#fef3c7', '#b45309');
+      const coatMat = new THREE.MeshStandardMaterial({ map: unasynTex, roughness: 0.45 });
+      const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.55 });
+      const maskMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.35 });
+      const hairMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+      const shoeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 });
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.15 });
+
+      // Rider sub-group (elevates and straddles when mounted on the Tiger)
+      const riderGroup = new THREE.Group();
+      modelRoot.add(riderGroup);
+
+      // Doctor Legs + Shoes
+      const legGeo = new THREE.CylinderGeometry(0.22, 0.20, 1.05, 12);
+      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.6 });
+      const lLeg = new THREE.Group();
+      const lLegMesh = new THREE.Mesh(legGeo, pantsMat);
+      const lShoe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.48), shoeMat);
+      lShoe.position.set(0, -0.45, 0.08);
+      lLeg.add(lLegMesh, lShoe);
+      lLeg.position.set(-0.34, 0.55, 0);
+
+      const rLeg = new THREE.Group();
+      const rLegMesh = new THREE.Mesh(legGeo, pantsMat);
+      const rShoe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.48), shoeMat);
+      rShoe.position.set(0, -0.45, 0.08);
+      rLeg.add(rLegMesh, rShoe);
+      rLeg.position.set(0.34, 0.55, 0);
+      riderGroup.add(lLeg, rLeg);
+
+      // White Doctor Coat Body (with Unasyn / Tigecycline label texture)
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(1.58, 1.88, 1.06), coatMat);
+      torso.position.y = 1.92;
+      torso.castShadow = true;
+      riderGroup.add(torso);
+
+      // Scrub V-neck shirt & Coat Lapels + Pocket with pens
+      const scrubNeck = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.12), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
+      scrubNeck.position.set(0, 2.55, 0.51);
+      const lapelL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.95, 0.12), whiteMat);
+      lapelL.position.set(-0.32, 2.28, 0.54);
+      lapelL.rotation.z = -0.18;
+      const lapelR = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.95, 0.12), whiteMat);
+      lapelR.position.set(0.32, 2.28, 0.54);
+      lapelR.rotation.z = 0.18;
+      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.08), whiteMat);
+      pocket.position.set(-0.46, 2.15, 0.55);
+      const pen = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.25, 6), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+      pen.position.set(-0.42, 2.34, 0.57);
+      riderGroup.add(scrubNeck, lapelL, lapelR, pocket, pen);
+
+      // Stethoscope draped around neck
+      const stethTube = new THREE.Mesh(
+        new THREE.TorusGeometry(0.54, 0.055, 10, 24, Math.PI * 1.35),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 })
+      );
+      stethTube.rotation.x = Math.PI / 2 + 0.35;
+      stethTube.rotation.z = -Math.PI * 0.18;
+      stethTube.position.set(0, 2.68, 0.18);
+      const stethBell = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 14), metalMat);
+      stethBell.rotation.x = Math.PI / 2;
+      stethBell.position.set(0.38, 2.25, 0.58);
+      riderGroup.add(stethTube, stethBell);
+
+      // Head + Ears
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.68, 18, 18), skinMat);
+      head.position.y = 3.38;
+      head.castShadow = true;
+      riderGroup.add(head);
+      [-0.66, 0.66].forEach(ex => {
+        const ear = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), skinMat);
+        ear.position.set(ex, 3.35, 0.05);
+        riderGroup.add(ear);
+      });
+
+      // Layered Hair & Surgical Cap
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.72, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hairMat);
+      hair.position.y = 3.42;
+      const headMirrorBand = new THREE.Mesh(new THREE.CylinderGeometry(0.73, 0.73, 0.12, 20), new THREE.MeshStandardMaterial({ color: 0x334155 }));
+      headMirrorBand.position.y = 3.68;
+      const headMirror = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 16), metalMat);
+      headMirror.rotation.x = Math.PI / 2;
+      headMirror.position.set(0, 3.74, 0.72);
+      riderGroup.add(hair, headMirrorBand, headMirror);
+
+      // Green Surgical Mask with white ear straps
+      const mask = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.48, 0.46), maskMat);
+      mask.position.set(0, 3.2, 0.52);
+      const maskPleat = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.06, 0.48), new THREE.MeshStandardMaterial({ color: 0x059669 }));
+      maskPleat.position.set(0, 3.2, 0.52);
+      riderGroup.add(mask, maskPleat);
+
+      addCuteEyes(riderGroup, 3.52, 0.6, 0.25, 1.05);
+
+      // Left Arm + Gloved Hand
+      const gloveMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.4 });
+      const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.95, 10), whiteMat);
+      leftArm.position.set(-0.95, 2.0, 0.15);
+      leftArm.rotation.z = 0.18;
+      const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), gloveMat);
+      leftHand.position.set(-1.04, 1.48, 0.18);
+      riderGroup.add(leftArm, leftHand);
+
+      // Right Throwing Arm + Gloved Hand + Gleaming Scalpel in Hand
+      const rightArm = new THREE.Group();
+      rightArm.position.set(0.95, 2.1, 0.35);
+      rightArm.rotation.x = Math.PI / 3;
+      const rightSleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.95, 10), whiteMat);
+      const rightHand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), gloveMat);
+      rightHand.position.y = -0.5;
+      const scalpelInHand = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.55, 4), metalMat);
+      scalpelInHand.position.set(0, -0.78, 0.12);
+      scalpelInHand.rotation.x = Math.PI;
+      rightArm.add(rightSleeve, rightHand, scalpelInHand);
+      riderGroup.add(rightArm);
+
+      // 3D Detailed Q-Version Tiger Mount (Hidden until Evolution Stage >= 1)
+      const tigerGroup = new THREE.Group();
+      const tigerOrange = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.42 });
+      const tigerStripe = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.48 });
+      const tigerWhite = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.48 });
+      const saddleMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.5 });
+
+      // Tiger Muscular Body + White Belly + Saddle
+      const tBody = new THREE.Mesh(new THREE.BoxGeometry(1.92, 1.38, 3.2), tigerOrange);
+      tBody.position.set(0, 1.38, 0);
+      tBody.castShadow = true;
+      const tBelly = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.35, 2.9), tigerWhite);
+      tBelly.position.set(0, 0.78, 0);
+      const saddle = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.25, 1.35), saddleMat);
+      saddle.position.set(0, 2.02, -0.15);
+      tigerGroup.add(tBody, tBelly, saddle);
+
+      // Black Tiger Stripes along the body
+      [-1.05, -0.45, 0.15, 0.75, 1.25].forEach(sz => {
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.98, 1.36, 0.2), tigerStripe);
+        stripe.position.set(0, 1.4, sz);
+        tigerGroup.add(stripe);
+      });
+
+      // Tiger Head + White Cheek Ruff + Fangs + Whiskers (+Z front)
+      const tHead = new THREE.Mesh(new THREE.SphereGeometry(0.92, 16, 16), tigerOrange);
+      tHead.position.set(0, 2.1, 1.82);
+      tHead.castShadow = true;
+      const cheekL = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 12), tigerWhite);
+      cheekL.position.set(-0.62, 1.92, 1.95);
+      const cheekR = new THREE.Mesh(new THREE.SphereGeometry(0.45, 12, 12), tigerWhite);
+      cheekR.position.set(0.62, 1.92, 1.95);
+      tigerGroup.add(tHead, cheekL, cheekR);
+
+      // Forehead "王" (King) stripe pattern
+      const kingH = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 0.1), tigerStripe);
+      kingH.position.set(0, 2.65, 2.6);
+      const kingV = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.1), tigerStripe);
+      kingV.position.set(0, 2.58, 2.6);
+      tigerGroup.add(kingH, kingV);
+
+      // Tiger Snout & White Fangs
+      const snout = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.58, 0.68), tigerWhite);
+      snout.position.set(0, 1.86, 2.48);
+      const nose = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 10), new THREE.MeshBasicMaterial({ color: 0xf43f5e }));
+      nose.position.set(0, 2.08, 2.82);
+      const fangL = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 8), whiteMat);
+      fangL.rotation.x = Math.PI;
+      fangL.position.set(-0.28, 1.52, 2.65);
+      const fangR = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.32, 8), whiteMat);
+      fangR.rotation.x = Math.PI;
+      fangR.position.set(0.28, 1.52, 2.65);
+      tigerGroup.add(snout, nose, fangL, fangR);
+
+      // Tiger Ears
+      [-0.65, 0.65].forEach(ex => {
+        const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.18, 14), tigerOrange);
+        ear.rotation.x = Math.PI / 2;
+        ear.position.set(ex, 2.82, 1.7);
+        const innerEar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.2, 12), tigerWhite);
+        innerEar.rotation.x = Math.PI / 2;
+        innerEar.position.set(ex, 2.82, 1.72);
+        tigerGroup.add(ear, innerEar);
+      });
+      addCuteEyes(tigerGroup, 2.28, 2.54, 0.35, 1.18);
+
+      // Striped Tiger Tail
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 1.85, 10), tigerOrange);
+      tail.position.set(0, 1.85, -1.92);
+      tail.rotation.x = -Math.PI / 4;
+      tigerGroup.add(tail);
+
+      // 4 Tiger Legs with White Paws
+      const tLegs = [];
+      [
+        [-0.7, 0.65,  1.08],
+        [ 0.7, 0.65,  1.08],
+        [-0.7, 0.65, -1.08],
+        [ 0.7, 0.65, -1.08]
+      ].forEach(([lx, ly, lz]) => {
+        const legGrp = new THREE.Group();
+        legGrp.position.set(lx, ly, lz);
+        const legMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.24, 1.25, 12), tigerOrange);
+        legMesh.castShadow = true;
+        const paw = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), tigerWhite);
+        paw.scale.set(1.0, 0.6, 1.25);
+        paw.position.set(0, -0.55, 0.08);
+        legGrp.add(legMesh, paw);
+        tigerGroup.add(legGrp);
+        tLegs.push(legGrp);
+      });
+
+      // Tiger Golden Battle Armor (Chestplate, Shoulder Plates, Bridle Reins & Stirrups)
+      const goldArmorMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.85, roughness: 0.18 });
+      const rubyGemMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0xdc2626, emissiveIntensity: 0.5 });
+      const emeraldGemMat = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x059669, emissiveIntensity: 0.6 });
+
+      const chestArmor = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.72, 0.65, 8), goldArmorMat);
+      chestArmor.rotation.x = Math.PI / 2;
+      chestArmor.position.set(0, 1.35, 1.55);
+      const chestGem = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), emeraldGemMat);
+      chestGem.position.set(0, 1.35, 1.88);
+      tigerGroup.add(chestArmor, chestGem);
+
+      // Tiger Shoulder Pauldrons & Golden Stirrups
+      [-0.98, 0.98].forEach(sx => {
+        const tPauldron = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), goldArmorMat);
+        tPauldron.position.set(sx, 1.55, 0.95);
+        tPauldron.rotation.z = sx > 0 ? -0.5 : 0.5;
+        const stirrup = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.035, 8, 12), goldArmorMat);
+        stirrup.position.set(sx * 0.95, 1.25, 0.15);
+        stirrup.rotation.y = Math.PI / 2;
+        tigerGroup.add(tPauldron, stirrup);
+      });
+
+      // Tiger Forehead Golden Crown Crest & Whiskers
+      const tigerCrown = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.52, 6), goldArmorMat);
+      tigerCrown.position.set(0, 2.95, 2.05);
+      tigerCrown.rotation.x = 0.25;
+      [-1, 1].forEach(side => {
+        [-0.08, 0.08].forEach(wy => {
+          const whisker = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.01, 0.75, 6), whiteMat);
+          whisker.rotation.z = Math.PI / 2 + side * 0.15;
+          whisker.position.set(side * 0.68, 1.85 + wy, 2.52);
+          tigerGroup.add(whisker);
+        });
+      });
+      tigerGroup.add(tigerCrown);
+
+      // Evolved Doctor Heroic Armor & Cape (Visible at Evolution Stage >= 1)
+      const evolvedArmorGroup = new THREE.Group();
+      // Heroic Crimson & Gold Trim Flowing Cape on Doctor's Back
+      const cape = new THREE.Mesh(
+        new THREE.BoxGeometry(1.62, 1.78, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 })
+      );
+      cape.position.set(0, 1.82, -0.58);
+      cape.rotation.x = 0.22;
+      const capeGoldBorder = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.18, 0.14), goldArmorMat);
+      capeGoldBorder.position.set(0, 0.98, -0.76);
+      evolvedArmorGroup.add(cape, capeGoldBorder);
+
+      // Golden Shoulder Pauldrons with Emerald Medical Gems on Doctor
+      [-0.92, 0.92].forEach(px => {
+        const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.6), goldArmorMat);
+        pauldron.position.set(px, 2.68, 0.05);
+        pauldron.rotation.z = px > 0 ? -0.45 : 0.45;
+        const pGem = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 10), emeraldGemMat);
+        pGem.position.set(px * 1.15, 2.72, 0.22);
+        evolvedArmorGroup.add(pauldron, pGem);
+      });
+
+      // Golden Visor Crown on Doctor's Forehead
+      const docCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.74, 0.22, 18), goldArmorMat);
+      docCrown.position.set(0, 3.72, 0);
+      const docCrestGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), emeraldGemMat);
+      docCrestGem.position.set(0, 3.92, 0.72);
+      evolvedArmorGroup.add(docCrown, docCrestGem);
+
+      evolvedArmorGroup.visible = false;
+      riderGroup.add(evolvedArmorGroup);
+
+      // Stage 2 (MAX Speed Tigecycline) Radiant Golden Halo & Ground Aura Ring
+      const stage2AuraGroup = new THREE.Group();
+      const backHalo = new THREE.Mesh(
+        new THREE.TorusGeometry(1.15, 0.075, 10, 28),
+        new THREE.MeshBasicMaterial({ color: 0xfef08a })
+      );
+      backHalo.position.set(0, 3.85, -0.55);
+      const groundAura = new THREE.Mesh(
+        new THREE.RingGeometry(1.85, 2.25, 32),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide, transparent: true, opacity: 0.75 })
+      );
+      groundAura.rotation.x = -Math.PI / 2;
+      groundAura.position.set(0, 0.12, 0);
+      stage2AuraGroup.add(backHalo, groundAura);
+      stage2AuraGroup.visible = false;
+      modelRoot.add(stage2AuraGroup);
+
+      tigerGroup.visible = false;
+      modelRoot.add(tigerGroup);
+
+      group.userData.riderGroup = riderGroup;
+      group.userData.tigerGroup = tigerGroup;
+      group.userData.evolvedArmorGroup = evolvedArmorGroup;
+      group.userData.stage2AuraGroup = stage2AuraGroup;
+      group.userData.tLegs = tLegs;
+      group.userData.lLeg = lLeg;
+      group.userData.rLeg = rLeg;
+      group.userData.rightArm = rightArm;
+      group.userData.coatMat = coatMat;
+      group.userData.unasynTex = unasynTex;
+      group.userData.tigeTex = tigeTex;
+      return group;
+    }
+
+    function setDoctorEvolutionVisual(stage) {
+      const { riderGroup, tigerGroup, evolvedArmorGroup, stage2AuraGroup, lLeg, rLeg, coatMat, unasynTex, tigeTex } = doctorMesh.userData;
+      if (stage >= 1) {
+        tigerGroup.visible = true;
+        evolvedArmorGroup.visible = true;
+        stage2AuraGroup.visible = (stage >= 2);
+        riderGroup.position.set(0, 1.38, -0.15);
+        // Straddle the tiger's back
+        lLeg.position.set(-0.88, 0.65, 0.15);
+        lLeg.rotation.z = -0.48;
+        rLeg.position.set(0.88, 0.65, 0.15);
+        rLeg.rotation.z = 0.48;
+        coatMat.map = tigeTex;
+        coatMat.needsUpdate = true;
+      } else {
+        tigerGroup.visible = false;
+        evolvedArmorGroup.visible = false;
+        stage2AuraGroup.visible = false;
+        riderGroup.position.set(0, 0, 0);
+        lLeg.position.set(-0.34, 0.55, 0);
+        lLeg.rotation.z = 0;
+        rLeg.position.set(0.34, 0.55, 0);
+        rLeg.rotation.z = 0;
+        coatMat.map = unasynTex;
+        coatMat.needsUpdate = true;
+      }
+    }
+
+    // Build High-Detail 3D Models for the 8 Defense Personnel (Scaled to 120%)
+    function createDefenderModel(type) {
+      const group = new THREE.Group();
+      group.scale.set(1.2, 1.2, 1.2); // Increase defender size to 120%
+
+      const skinMat = new THREE.MeshStandardMaterial({ color: 0xfde68a, roughness: 0.48 });
+      const darkBootMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
+
+      // Helper to add detailed legs + shoes/boots to any defender
+      const addLegsAndBoots = (legColor, bootColor = 0x1e293b) => {
+        const lMat = new THREE.MeshStandardMaterial({ color: legColor, roughness: 0.55 });
+        const bMat = new THREE.MeshStandardMaterial({ color: bootColor, roughness: 0.45 });
+        [-0.26, 0.26].forEach(lx => {
+          const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.15, 0.72, 10), lMat);
+          leg.position.set(lx, 0.36, 0);
+          leg.castShadow = true;
+          const boot = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.42), bMat);
+          boot.position.set(lx, 0.1, 0.08);
+          group.add(leg, boot);
+        });
+      };
+
+      if (type === 'ertapenem') {
+        // Boy wearing baseball jersey, cap, backpack, glove, and throwing baseballs
+        addLegsAndBoots(0x1e3a8a, 0xef4444);
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.45 });
+        const whiteSleeveMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.45 });
+        const capMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
+        const gloveLeather = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.55 });
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.62, 1.35, 14), shirtMat);
+        body.position.y = 1.28;
+        body.castShadow = true;
+        // Yellow backpack
+        const pack = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.85, 0.38), new THREE.MeshStandardMaterial({ color: 0xfacc15 }));
+        pack.position.set(0, 1.32, -0.52);
+
+        // Arms: Left hand with brown leather catcher's mitt, Right hand pitching baseball
+        const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.75, 10), whiteSleeveMat);
+        lArm.position.set(-0.68, 1.38, 0.2);
+        lArm.rotation.z = 0.35;
+        const mitt = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), gloveLeather);
+        mitt.scale.set(1.1, 1.1, 0.6);
+        mitt.position.set(-0.82, 1.1, 0.35);
+
+        const rArm = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.14, 0.78, 10), whiteSleeveMat);
+        rArm.position.set(0.68, 1.48, 0.28);
+        rArm.rotation.x = Math.PI / 3;
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+        ball.position.set(0.75, 1.62, 0.68);
+        const seam = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.025, 6, 16), capMat);
+        seam.position.copy(ball.position);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 16, 16), skinMat);
+        head.position.y = 2.38;
+        const capDome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), capMat);
+        capDome.position.y = 2.42;
+        const capButton = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), whiteSleeveMat);
+        capButton.position.set(0, 3.04, 0);
+        const visor = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.09, 0.62), capMat);
+        visor.position.set(0, 2.48, 0.58);
+        addCuteEyes(group, 2.35, 0.53, 0.22, 0.95);
+        group.add(body, pack, lArm, mitt, rArm, ball, seam, head, capDome, capButton, visor);
+
+      } else if (type === 'meropenem') {
+        // Red firefighter with reflective yellow stripes, oxygen tank on back, helmet shield, and brass water hose
+        addLegsAndBoots(0x991b1b, 0x0f172a);
+        const redSuit = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45 });
+        const yellowTrim = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xca8a04, emissiveIntensity: 0.2 });
+        const brassMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.85, roughness: 0.2 });
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.7, 1.45, 14), redSuit);
+        body.position.y = 1.32;
+        body.castShadow = true;
+        const stripe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.69, 0.2, 14), yellowTrim);
+        stripe1.position.y = 1.05;
+        const stripe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.67, 0.2, 14), yellowTrim);
+        stripe2.position.y = 1.55;
+
+        // Yellow SCBA Oxygen Tank on Back
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 1.15, 12), yellowTrim);
+        tank.position.set(0, 1.42, -0.68);
+        const tankValve = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.25, 8), brassMat);
+        tankValve.position.set(0, 2.05, -0.68);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 16, 16), skinMat);
+        head.position.y = 2.45;
+        // Firefighter Helmet with brim, crest & badge
+        const helmetBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.88, 0.88, 0.08, 16), redSuit);
+        helmetBrim.position.set(0, 2.75, -0.05);
+        helmetBrim.scale.set(1.0, 1.0, 1.18);
+        const helmetDome = new THREE.Mesh(new THREE.SphereGeometry(0.64, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), redSuit);
+        helmetDome.position.y = 2.75;
+        const badge = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.36, 0.1), brassMat);
+        badge.position.set(0, 2.98, 0.58);
+
+        // Two-handed Heavy Water Hose + Brass Nozzle pointing +Z
+        const hoseBody = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.22, 0.26, 1.55, 12),
+          new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6 })
+        );
+        hoseBody.rotation.x = Math.PI / 2;
+        hoseBody.position.set(0.55, 1.45, 0.78);
+        const brassTip = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.25, 0.45, 12), brassMat);
+        brassTip.rotation.x = Math.PI / 2;
+        brassTip.position.set(0.55, 1.45, 1.65);
+
+        addCuteEyes(group, 2.42, 0.53, 0.22, 0.95);
+        group.add(body, stripe1, stripe2, tank, tankValve, head, helmetBrim, helmetDome, badge, hoseBody, brassTip);
+
+      } else if (type === 'ciprofloxacin') {
+        // Lara Croft style girl (teal tank top, utility belt with holsters, quiver with arrows on back, bow & nocked arrow)
+        addLegsAndBoots(0x78350f, 0x1c1917);
+        const tankMat = new THREE.MeshStandardMaterial({ color: 0x0d9488, roughness: 0.45 });
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x5c2d0c, roughness: 0.5 });
+        const leatherMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.6 });
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.54, 1.35, 14), tankMat);
+        body.position.y = 1.28;
+        body.castShadow = true;
+        // Utility belt + gold buckle
+        const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.2, 14), leatherMat);
+        belt.position.y = 0.82;
+        const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.1), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8 }));
+        buckle.position.set(0, 0.82, 0.55);
+
+        // Arrow Quiver on back
+        const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.18, 1.05, 10), leatherMat);
+        quiver.position.set(-0.25, 1.5, -0.52);
+        quiver.rotation.z = -0.25;
+
+        // Bare Arms
+        const lArm = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.8, 10), skinMat);
+        lArm.position.set(-0.6, 1.45, 0.25);
+        lArm.rotation.x = Math.PI / 4;
+        const rArm = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.8, 10), skinMat);
+        rArm.position.set(0.55, 1.48, 0.42);
+        rArm.rotation.x = Math.PI / 2.3;
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.56, 16, 16), skinMat);
+        head.position.y = 2.38;
+        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
+        hair.position.y = 2.42;
+        // Braided ponytail segments
+        const braid1 = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), hairMat);
+        braid1.position.set(0, 2.2, -0.62);
+        const braid2 = new THREE.Mesh(new THREE.SphereGeometry(0.19, 10, 10), hairMat);
+        braid2.position.set(0, 1.92, -0.78);
+        const braid3 = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.45, 8), hairMat);
+        braid3.position.set(0, 1.6, -0.88);
+        braid3.rotation.x = -0.4;
+
+        // Recurve Bow + Bowstring + Nocked Arrow pointing +Z
+        const bow = new THREE.Mesh(
+          new THREE.TorusGeometry(0.82, 0.085, 10, 20, Math.PI),
+          new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.4 })
+        );
+        bow.position.set(0.48, 1.52, 0.78);
+        bow.rotation.z = -Math.PI / 2;
+        const bowString = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 1.6, 6),
+          new THREE.MeshBasicMaterial({ color: 0xe2e8f0 })
+        );
+        bowString.position.set(0.48, 1.52, 0.78);
+        const nockedArrow = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.035, 0.035, 1.1, 6),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a })
+        );
+        nockedArrow.rotation.x = Math.PI / 2;
+        nockedArrow.position.set(0.48, 1.52, 1.15);
+
+        addCuteEyes(group, 2.34, 0.51, 0.22, 0.95);
+        group.add(body, belt, buckle, quiver, lArm, rArm, head, hair, braid1, braid2, braid3, bow, bowString, nockedArrow);
+
+      } else if (type === 'zavicefta') {
+        // Black-and-white maid dress with frilly apron, bow ribbon, maid headband, and detailed sniper rifle with bipod & scope
+        addLegsAndBoots(0xf8fafc, 0x18181b);
+        const blackDress = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.5 });
+        const whiteApron = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x312e81, roughness: 0.45 });
+        const gunMetal = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.2 });
+
+        const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.98, 1.45, 18), blackDress);
+        skirt.position.y = 1.05;
+        skirt.castShadow = true;
+        // White frill hem around bottom of skirt
+        const frillHem = new THREE.Mesh(new THREE.TorusGeometry(0.94, 0.09, 10, 24), whiteApron);
+        frillHem.rotation.x = Math.PI / 2;
+        frillHem.position.y = 0.38;
+
+        const bodice = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.52, 0.75, 14), blackDress);
+        bodice.position.y = 1.65;
+        const apron = new THREE.Mesh(new THREE.BoxGeometry(0.76, 1.25, 0.24), whiteApron);
+        apron.position.set(0, 1.15, 0.5);
+        // Puff sleeves
+        [-0.58, 0.58].forEach(sx => {
+          const puff = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 10), blackDress);
+          puff.position.set(sx, 1.82, 0.15);
+          group.add(puff);
+        });
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.56, 16, 16), skinMat);
+        head.position.y = 2.38;
+        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.58), hairMat);
+        hair.position.y = 2.42;
+        const headband = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.11, 10, 20, Math.PI), whiteApron);
+        headband.position.set(0, 2.58, 0.05);
+
+        // High-precision Sniper Rifle + Stock + Barrel + Muzzle Brake + Scope
+        const stock = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.34, 0.9), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+        stock.position.set(0.55, 1.5, 0.35);
+        const rifleBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 2.45, 12), gunMetal);
+        rifleBarrel.rotation.x = Math.PI / 2;
+        rifleBarrel.position.set(0.55, 1.58, 1.25);
+        const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.3, 10), gunMetal);
+        muzzle.rotation.x = Math.PI / 2;
+        muzzle.position.set(0.55, 1.58, 2.45);
+        const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.85, 12), new THREE.MeshStandardMaterial({ color: 0x020617, metalness: 0.9 }));
+        scope.rotation.x = Math.PI / 2;
+        scope.position.set(0.55, 1.8, 1.1);
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+        lens.rotation.x = Math.PI / 2;
+        lens.position.set(0.55, 1.8, 1.53);
+
+        addCuteEyes(group, 2.34, 0.51, 0.22, 0.95);
+        group.add(skirt, frillHem, bodice, apron, head, hair, headband, stock, rifleBarrel, muzzle, scope, lens);
+
+      } else if (type === 'erasix') {
+        // Girl mage in red cloak with gold trim, red wizard hat with gold buckle band, ornate wooden staff with floating crystal & fire ring
+        addLegsAndBoots(0x7f1d1d, 0x451a03);
+        const redCloak = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.75, roughness: 0.25 });
+
+        const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.72, 18), redCloak);
+        cloak.position.y = 1.15;
+        cloak.castShadow = true;
+        const goldHem = new THREE.Mesh(new THREE.TorusGeometry(0.91, 0.06, 8, 24), goldMat);
+        goldHem.rotation.x = Math.PI / 2;
+        goldHem.position.y = 0.35;
+        const capeCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.68, 0.42, 14), redCloak);
+        capeCollar.position.y = 1.88;
+        const brooch = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 10), goldMat);
+        brooch.position.set(0, 1.9, 0.56);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.56, 16, 16), skinMat);
+        head.position.y = 2.35;
+        const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.08, 18), redCloak);
+        hatBrim.position.y = 2.74;
+        const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.64, 0.66, 0.18, 16), goldMat);
+        hatBand.position.y = 2.84;
+        const hatCone = new THREE.Mesh(new THREE.ConeGeometry(0.64, 1.35, 16), redCloak);
+        hatCone.position.y = 3.45;
+
+        // Ornate Wooden Staff + Gold Crown + Blazing Fire Orb
+        const staff = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.12, 2.65, 10),
+          new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.5 })
+        );
+        staff.position.set(0.78, 1.48, 0.58);
+        const staffRing = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.05, 8, 16), goldMat);
+        staffRing.position.set(0.78, 2.85, 0.58);
+        const orb = new THREE.Mesh(
+          new THREE.SphereGeometry(0.26, 14, 14),
+          new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0xea580c, emissiveIntensity: 0.7 })
+        );
+        orb.position.set(0.78, 2.85, 0.58);
+
+        addCuteEyes(group, 2.32, 0.5, 0.22, 0.95);
+        group.add(cloak, goldHem, capeCollar, brooch, head, hatBrim, hatBand, hatCone, staff, staffRing, orb);
+
+      } else if (type === 'teicoplanin') {
+        // Sailor-uniform high school girl with red neckscarf bow, pleated navy skirt, twin-tails, carrying heavy military bazooka
+        addLegsAndBoots(0xfde68a, 0x1e293b);
+        const navyMat = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.45 });
+        const whiteTop = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+        const redBowMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45 });
+
+        const skirt = new THREE.Mesh(new THREE.ConeGeometry(0.84, 0.88, 16), navyMat);
+        skirt.position.y = 0.85;
+        skirt.castShadow = true;
+        const top = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.55, 0.98, 14), whiteTop);
+        top.position.y = 1.55;
+        const collar = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.26, 0.98), navyMat);
+        collar.position.y = 1.92;
+        const redTie = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.45, 4), redBowMat);
+        redTie.rotation.x = Math.PI;
+        redTie.position.set(0, 1.68, 0.56);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.56, 16, 16), skinMat);
+        head.position.y = 2.4;
+        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56), hairMat);
+        hair.position.y = 2.44;
+        // Cute twin-tails
+        [-0.62, 0.62].forEach(tx => {
+          const tail = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.85, 10), hairMat);
+          tail.position.set(tx, 2.2, -0.15);
+          tail.rotation.z = tx > 0 ? -0.35 : 0.35;
+          group.add(tail);
+        });
+
+        // Heavy Shoulder Bazooka with Flared Rear Exhaust, Sight & Grip pointing +Z
+        const launcherMat = new THREE.MeshStandardMaterial({ color: 0x3f6212, metalness: 0.55, roughness: 0.35 });
+        const bazooka = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 2.3, 14), launcherMat);
+        bazooka.rotation.x = Math.PI / 2;
+        bazooka.position.set(0.68, 2.12, 0.65);
+        const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.26, 0.45, 14), launcherMat);
+        exhaust.rotation.x = Math.PI / 2;
+        exhaust.position.set(0.68, 2.12, -0.62);
+        const frontRim = new THREE.Mesh(new THREE.TorusGeometry(0.28, 0.05, 8, 16), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+        frontRim.position.set(0.68, 2.12, 1.8);
+        const sight = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.28, 0.12), new THREE.MeshStandardMaterial({ color: 0xfacc15 }));
+        sight.position.set(0.42, 2.38, 1.35);
+
+        addCuteEyes(group, 2.37, 0.51, 0.22, 0.95);
+        group.add(skirt, top, collar, redTie, head, hair, bazooka, exhaust, frontRim, sight);
+
+      } else if (type === 'metronidazole') {
+        // Green camouflage soldier with tactical vest, ammo belt, helmet with goggles, and detailed heavy machine gun with drum mag
+        addLegsAndBoots(0x3f6212, 0x0f172a);
+        const camoMat = new THREE.MeshStandardMaterial({ color: 0x3f6212, roughness: 0.5 });
+        const vestMat = new THREE.MeshStandardMaterial({ color: 0x14532d, roughness: 0.55 });
+        const gunMetal = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.78, roughness: 0.25 });
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.66, 1.45, 14), camoMat);
+        body.position.y = 1.3;
+        body.castShadow = true;
+        const tacVest = new THREE.Mesh(new THREE.BoxGeometry(1.18, 1.05, 0.92), vestMat);
+        tacVest.position.y = 1.38;
+        // Golden ammo belt across chest
+        const ammoBelt = new THREE.Mesh(
+          new THREE.TorusGeometry(0.64, 0.08, 8, 18),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8 })
+        );
+        ammoBelt.rotation.y = Math.PI / 4;
+        ammoBelt.position.y = 1.42;
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.58, 16, 16), skinMat);
+        head.position.y = 2.4;
+        const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.66, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56), vestMat);
+        helmet.position.y = 2.46;
+        // Tactical goggles on helmet forehead
+        const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.24, 0.3), new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.7 }));
+        goggles.position.set(0, 2.68, 0.52);
+
+        // Heavy Machine Gun + Perforated Barrel Jacket + Drum Magazine pointing +Z
+        const gunReceiver = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 1.25), gunMetal);
+        gunReceiver.position.set(0.58, 1.48, 0.65);
+        const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.15, 10), gunMetal);
+        gunBarrel.rotation.x = Math.PI / 2;
+        gunBarrel.position.set(0.58, 1.52, 1.55);
+        const drumMag = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.25, 12), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.6 }));
+        drumMag.rotation.z = Math.PI / 2;
+        drumMag.position.set(0.58, 1.18, 0.85);
+
+        addCuteEyes(group, 2.36, 0.52, 0.22, 0.95);
+        group.add(body, tacVest, ammoBelt, head, helmet, goggles, gunReceiver, gunBarrel, drumMag);
+
+      } else if (type === 'polymyxin') {
+        // Cowboy holding a revolver pistol (sheriff star badge, leather vest, red bandana, gun belt with holster, wide-brimmed cowboy hat, six-shooter revolver)
+        addLegsAndBoots(0x1d4ed8, 0x78350f);
+        const vestMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.55 });
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.5 });
+        const hatMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.48 });
+        const bandanaMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.45 });
+        const chromeMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.92, roughness: 0.12 });
+
+        const shirtBody = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.6, 1.42, 14), shirtMat);
+        shirtBody.position.y = 1.3;
+        const vest = new THREE.Mesh(new THREE.BoxGeometry(1.16, 1.15, 0.88), vestMat);
+        vest.position.y = 1.38;
+        vest.castShadow = true;
+        // Golden Sheriff Star Badge on chest
+        const badge = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.16, 0.16, 0.06, 6),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.9 })
+        );
+        badge.rotation.x = Math.PI / 2;
+        badge.position.set(-0.32, 1.62, 0.46);
+
+        // Gun Belt + Side Holster
+        const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.63, 0.63, 0.2, 14), hatMat);
+        belt.position.y = 0.82;
+        const bandana = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.52, 12), bandanaMat);
+        bandana.rotation.x = Math.PI;
+        bandana.position.set(0, 1.82, 0.08);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.57, 16, 16), skinMat);
+        head.position.y = 2.38;
+        // Sculpted Cowboy Hat with upturned side brims & leather hatband
+        const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 0.09, 20), hatMat);
+        hatBrim.position.y = 2.78;
+        hatBrim.scale.set(1.0, 1.0, 1.18);
+        const hatBand = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.62, 0.14, 14), bandanaMat);
+        hatBand.position.y = 2.86;
+        const hatCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.62, 0.68, 14), hatMat);
+        hatCrown.position.y = 3.12;
+
+        // Detailed Six-Shooter Revolver (Barrel + Revolving Cylinder + Wooden Grip) pointing +Z
+        const pistolBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.18, 10), chromeMat);
+        pistolBarrel.rotation.x = Math.PI / 2;
+        pistolBarrel.position.set(0.64, 1.58, 1.05);
+        const revCylinder = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.36, 10), chromeMat);
+        revCylinder.rotation.x = Math.PI / 2;
+        revCylinder.position.set(0.64, 1.55, 0.58);
+        const pistolGrip = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 0.48, 0.24),
+          new THREE.MeshStandardMaterial({ color: 0x451a03 })
+        );
+        pistolGrip.position.set(0.64, 1.32, 0.38);
+        pistolGrip.rotation.x = -0.25;
+
+        addCuteEyes(group, 2.35, 0.51, 0.22, 0.95);
+        group.add(shirtBody, vest, badge, belt, bandana, head, hatBrim, hatBand, hatCrown, pistolBarrel, revCylinder, pistolGrip);
+      }
+
+      return group;
+    }
+
+    // =========================================================================
+    // 5. GAME STATE, ENTITIES, DEFENSE PADS & RANGE CIRCLE
+    // =========================================================================
+    let gameRunning = false;
+    let gamePaused = false;
+    let gameOver = false;
+    let currentWave = 1;
+    let gold = 15; // Start with 15 gold so player can evolve in Wave 1 (10G) or save
+    let castleHp = 10;
+    let totalKills = 0;
+    let doctorEvolutionStage = 0; // 0: Unasyn (0.5s), 1: Tigecycline on Tiger (5G, 0.6s), 2: Tigecycline Speed Up (10G, 0.3s)
+    let doctorShootTimer = 0;
+
+    // Attack range is 1/5 of visible battlefield width (~56 world units wide -> ~11.5 units radius)
+    let attackRange = 11.5;
+
+    // Handwash skill state: 180s cooldown
+    let handwashCooldown = 180;
+    let handwashUsedOnce = false;
+
+    // Wave spawning state
+    let waveSpawnQueue = [];
+    let waveSpawnTimer = 0;
+    let activeBacteria = [];
+    let activeProjectiles = [];
+    let waterBeams = [];
+
+    // Create Doctor Player in Scene
+    const doctorMesh = createDoctorModel();
+    doctorMesh.position.set(0, 0, -18);
+    scene.add(doctorMesh);
+
+    // Subtle Range Ring around Doctor (shows 1/5 visible battlefield width)
+    const rangeRingGeo = new THREE.RingGeometry(1, 1.04, 48);
+    const rangeRingMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.25
+    });
+    const doctorRangeRing = new THREE.Mesh(rangeRingGeo, rangeRingMat);
+    doctorRangeRing.rotation.x = -Math.PI / 2;
+    doctorRangeRing.position.y = 0.08;
+    doctorRangeRing.scale.set(attackRange, attackRange, 1);
+    doctorMesh.add(doctorRangeRing);
+
+    // Build 8 Defense Pads in Scene
+    const defensePads = PAD_COORDS.map(coord => {
+      const padGroup = new THREE.Group();
+      padGroup.position.set(coord.x, 0, coord.z);
+
+      const disc = new THREE.Mesh(
+        new THREE.CylinderGeometry(2.6, 2.8, 0.2, 24),
+        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 })
+      );
+      disc.position.y = 0.1;
+      disc.receiveShadow = true;
+
+      const glowRing = new THREE.Mesh(
+        new THREE.RingGeometry(2.3, 2.75, 32),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide })
+      );
+      glowRing.rotation.x = -Math.PI / 2;
+      glowRing.position.y = 0.22;
+
+      padGroup.add(disc, glowRing);
+      scene.add(padGroup);
+
+      return {
+        id: coord.id,
+        x: coord.x,
+        z: coord.z,
+        mesh: padGroup,
+        glowRing,
+        towerType: null,      // e.g. 'ertapenem', 'meropenem', etc.
+        unitCount: 0,         // 1 initially, +1 adds another unit beside it
+        investedGold: 0,      // Track total spent for 60% demolish refund
+        unitMeshes: [],       // 3D meshes for each unit on this pad
+        cooldowns: [],        // Per-unit attack timers
+        waterBeams: []        // Continuous water stream meshes for Meropenem
+      };
+    });
+
+    function clearSinglePad(pad) {
+      pad.unitMeshes.forEach(m => scene.remove(m));
+      pad.waterBeams.forEach(b => scene.remove(b));
+      pad.unitMeshes = [];
+      pad.waterBeams = [];
+      pad.cooldowns = [];
+      pad.towerType = null;
+      pad.unitCount = 0;
+      pad.investedGold = 0;
+      pad.glowRing.material.color.setHex(0xfacc15);
+    }
+
+    function clearAllPads() {
+      defensePads.forEach(pad => clearSinglePad(pad));
+    }
+
+    function placeOrRebuildPadUnits(pad) {
+      // Remove old meshes first
+      pad.unitMeshes.forEach(m => scene.remove(m));
+      pad.waterBeams.forEach(b => scene.remove(b));
+      pad.unitMeshes = [];
+      pad.waterBeams = [];
+
+      if (!pad.towerType || pad.unitCount <= 0) return;
+
+      pad.glowRing.material.color.setHex(0x22c55e);
+
+      for (let i = 0; i < pad.unitCount; i++) {
+        const unitMesh = createDefenderModel(pad.towerType);
+        // Offset multiple units neatly around the pad center
+        let ox = 0;
+        let oz = 0;
+        if (pad.unitCount === 2) {
+          ox = i === 0 ? -1.38 : 1.38;
+        } else if (pad.unitCount >= 3) {
+          const angle = (i / pad.unitCount) * Math.PI * 2;
+          ox = Math.cos(angle) * 1.62;
+          oz = Math.sin(angle) * 1.62;
+        }
+        unitMesh.position.set(pad.x + ox, 0.2, pad.z + oz);
+        scene.add(unitMesh);
+        pad.unitMeshes.push(unitMesh);
+        if (pad.cooldowns[i] === undefined) pad.cooldowns[i] = 0;
+
+        // If Meropenem, create a continuous water beam cylinder mesh
+        if (pad.towerType === 'meropenem') {
+          const beamGeo = new THREE.CylinderGeometry(0.18, 0.32, 1, 10);
+          beamGeo.translate(0, 0.5, 0);
+          beamGeo.rotateX(Math.PI / 2);
+          const beamMat = new THREE.MeshBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.78
+          });
+          const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+          beamMesh.visible = false;
+          scene.add(beamMesh);
+          pad.waterBeams.push(beamMesh);
+        }
+      }
+    }
+
+    // =========================================================================
+    // 6. INPUT HANDLING: PC (WASD / ARROWS) + MOBILE (TOUCH DRAG)
+    // =========================================================================
+    const keysPressed = {};
+    window.addEventListener('keydown', e => {
+      const k = e.key.toLowerCase();
+      keysPressed[k] = true;
+      if (k === 'p' && gameRunning && !gameOver) {
+        togglePauseGame();
+      }
+    });
+    window.addEventListener('keyup', e => {
+      keysPressed[e.key.toLowerCase()] = false;
+    });
+
+    // Touch drag state on canvas
+    let touchActive = false;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchVectorX = 0;
+    let touchVectorY = 0;
+    const joystickRing = document.getElementById('touch-joystick-ring');
+    const joystickNub = document.getElementById('touch-joystick-nub');
+
+    renderer.domElement.addEventListener('pointerdown', e => {
+      if (!gameRunning || gamePaused || gameOver) return;
+      sound.init();
+      touchActive = true;
+      touchStartX = e.clientX;
+      touchStartY = e.clientY;
+      touchVectorX = 0;
+      touchVectorY = 0;
+
+      joystickRing.style.left = `${touchStartX}px`;
+      joystickRing.style.top = `${touchStartY}px`;
+      joystickRing.classList.remove('hidden');
+      joystickRing.classList.add('flex');
+      joystickNub.style.transform = `translate(0px, 0px)`;
+    });
+
+    window.addEventListener('pointermove', e => {
+      if (!touchActive) return;
+      const dx = e.clientX - touchStartX;
+      const dy = e.clientY - touchStartY;
+      const dist = Math.hypot(dx, dy);
+      const maxRadius = 42;
+      if (dist > 4) {
+        const clamped = Math.min(dist, maxRadius);
+        const nx = dx / dist;
+        const ny = dy / dist;
+        touchVectorX = nx * (clamped / maxRadius);
+        touchVectorY = ny * (clamped / maxRadius);
+        joystickNub.style.transform = `translate(${nx * clamped * 0.6}px, ${ny * clamped * 0.6}px)`;
+      } else {
+        touchVectorX = 0;
+        touchVectorY = 0;
+        joystickNub.style.transform = `translate(0px, 0px)`;
+      }
+    });
+
+    const endTouch = () => {
+      touchActive = false;
+      touchVectorX = 0;
+      touchVectorY = 0;
+      joystickRing.classList.add('hidden');
+      joystickRing.classList.remove('flex');
+    };
+    window.addEventListener('pointerup', endTouch);
+    window.addEventListener('pointercancel', endTouch);
+
+    // =========================================================================
+    // 7. UI & CONTEXTUAL PAD MENU UPDATES
+    // =========================================================================
+    const hudGold = document.getElementById('hud-gold');
+    const hudRemaining = document.getElementById('hud-remaining');
+    const hudCastle = document.getElementById('hud-castle');
+    const hudKills = document.getElementById('hud-kills');
+    const hudWave = document.getElementById('hud-wave');
+    const btnEvolve = document.getElementById('btn-evolve');
+    const evolveTitle = document.getElementById('evolve-title');
+    const evolveDesc = document.getElementById('evolve-desc');
+    const btnHandwash = document.getElementById('btn-handwash');
+    const handwashBadge = document.getElementById('handwash-badge');
+    const btnPause = document.getElementById('btn-pause');
+    const pauseIconBox = document.getElementById('pause-icon-box');
+    const pauseTitle = document.getElementById('pause-title');
+    const pauseDesc = document.getElementById('pause-desc');
+    const pauseBanner = document.getElementById('pause-banner');
+    const btnResumeOverlay = document.getElementById('btn-resume-overlay');
+
+    const padMenu = document.getElementById('pad-menu');
+    const padMenuTitle = document.getElementById('pad-menu-title');
+    const padMenuStatus = document.getElementById('pad-menu-status');
+    const padBuildList = document.getElementById('pad-build-list');
+    const padManageList = document.getElementById('pad-manage-list');
+    const padTowerInfo = document.getElementById('pad-tower-info');
+    const btnPadUpgrade = document.getElementById('btn-pad-upgrade');
+    const btnPadPlusOne = document.getElementById('btn-pad-plusone');
+    const btnPadDemolish = document.getElementById('btn-pad-demolish');
+    const demolishRefundLabel = document.getElementById('demolish-refund');
+
+    let currentActivePad = null;
+    let lastPadMenuSignature = '';
+
+    function updateTopHUD() {
+      hudGold.textContent = gold;
+      const rem = waveSpawnQueue.length + activeBacteria.length;
+      hudRemaining.textContent = rem;
+      hudCastle.textContent = `${castleHp} / 10`;
+      hudKills.textContent = totalKills;
+      hudWave.textContent = `第 ${currentWave} 關`;
+
+      // Doctor Evolution button state (2 stages)
+      if (doctorEvolutionStage === 0) {
+        btnEvolve.disabled = gold < 5;
+        evolveTitle.textContent = '強化：Tigecycline (5金)';
+        evolveDesc.textContent = '騎乘老虎・廣效殺傷 (攻速0.8s)';
+      } else if (doctorEvolutionStage === 1) {
+        btnEvolve.disabled = gold < 10;
+        evolveTitle.textContent = '二次強化：極速虎騎 (10金)';
+        evolveDesc.textContent = 'Tigecycline 攻速 0.8s ➔ 0.5s';
+      } else {
+        btnEvolve.disabled = true;
+        evolveTitle.textContent = 'Tigecycline MAX';
+        evolveDesc.textContent = '騎虎極速狀態：0.5秒 / 擊';
+      }
+
+      // Handwash button state
+      if (handwashCooldown <= 0 && !gamePaused) {
+        btnHandwash.disabled = false;
+        handwashBadge.textContent = '可使用!';
+        handwashBadge.className = 'text-[10px] px-1.5 py-0.5 rounded bg-emerald-500 text-slate-950 font-black animate-pulse';
+      } else {
+        btnHandwash.disabled = true;
+        handwashBadge.textContent = handwashCooldown <= 0 ? '可使用!' : `${Math.ceil(handwashCooldown)}s`;
+        handwashBadge.className = 'text-[10px] px-1.5 py-0.5 rounded bg-sky-900/90 text-sky-300 font-bold';
+      }
+      if (gamePaused) {
+        btnEvolve.disabled = true;
+      }
+    }
+
+    function updatePauseUI() {
+      if (gamePaused) {
+        pauseIconBox.textContent = '▶️';
+        pauseTitle.textContent = '繼續遊戲';
+        pauseDesc.textContent = '目前暫停中';
+        pauseBanner.classList.remove('hidden');
+        pauseBanner.classList.add('flex');
+      } else {
+        pauseIconBox.textContent = '⏸️';
+        pauseTitle.textContent = '暫停遊戲';
+        pauseDesc.textContent = '時間暫停 (P鍵)';
+        pauseBanner.classList.add('hidden');
+        pauseBanner.classList.remove('flex');
+      }
+      updateTopHUD();
+    }
+
+    function togglePauseGame() {
+      if (!gameRunning || gameOver) return;
+      gamePaused = !gamePaused;
+      if (gamePaused) {
+        endTouch();
+        sound.stopBGM();
+      } else {
+        lastFrameTime = performance.now();
+        sound.startBGM();
+      }
+      updatePauseUI();
+    }
+
+    function showWaveToast(title, subtitle) {
+      const toast = document.getElementById('wave-toast');
+      document.getElementById('wave-toast-title').textContent = title;
+      document.getElementById('wave-toast-sub').textContent = subtitle;
+      toast.classList.remove('opacity-0', '-translate-y-4');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', '-translate-y-4');
+        toast.classList.remove('opacity-100', 'translate-y-0');
+      }, 3600);
+    }
+
+    function refreshPadMenuUI() {
+      if (!currentActivePad) {
+        padMenu.classList.add('hidden');
+        lastPadMenuSignature = '';
+        return;
+      }
+
+      const perms = getWavePermissions(currentWave);
+      const sig = `${currentActivePad.id}-${currentActivePad.towerType}-${currentActivePad.unitCount}-${currentActivePad.investedGold}-${gold}-${currentWave}`;
+      if (sig === lastPadMenuSignature) return;
+      lastPadMenuSignature = sig;
+
+      padMenu.classList.remove('hidden');
+      padMenuTitle.textContent = `防禦設點 #${currentActivePad.id}`;
+
+      if (!currentActivePad.towerType) {
+        // Empty Pad: show build options allowed in this wave
+        padMenuStatus.textContent = '空置點位（點擊部署）';
+        padBuildList.classList.remove('hidden');
+        padManageList.classList.add('hidden');
+        padManageList.classList.remove('flex');
+        padBuildList.innerHTML = '';
+
+        if (perms.build.length === 0) {
+          const msg = document.createElement('div');
+          msg.className = 'col-span-2 text-xs text-slate-400 py-2 text-center';
+          msg.textContent = '第一關僅能進化醫師，第 2 關起開放部署防禦人員！';
+          padBuildList.appendChild(msg);
+          return;
+        }
+
+        perms.build.forEach(towerKey => {
+          const spec = ANTIBIOTIC_SPECS[towerKey];
+          const canAfford = gold >= spec.cost;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.disabled = !canAfford;
+          btn.className = `p-2 rounded-xl border text-left transition flex flex-col justify-between ${
+            canAfford
+              ? 'bg-slate-800/90 hover:bg-slate-700 border-slate-600 text-slate-100 active:scale-95'
+              : 'bg-slate-900/60 border-slate-800 text-slate-500 cursor-not-allowed'
+          }`;
+          btn.innerHTML = `
+            <div class="flex items-center justify-between w-full">
+              <span class="font-bold text-xs text-amber-300">${spec.name}</span>
+              <span class="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">${spec.cost}金</span>
+            </div>
+            <div class="text-[10px] text-slate-300 mt-0.5">${spec.subtitle} (${spec.interval}s)</div>
+          `;
+          btn.addEventListener('click', () => {
+            if (!currentActivePad || currentActivePad.towerType) return;
+            if (gold < spec.cost) return;
+            gold -= spec.cost;
+            currentActivePad.towerType = towerKey;
+            currentActivePad.unitCount = 1;
+            currentActivePad.investedGold = spec.cost;
+            currentActivePad.cooldowns = [0];
+            placeOrRebuildPadUnits(currentActivePad);
+            sound.playSfx('upgrade');
+            updateTopHUD();
+            lastPadMenuSignature = '';
+            refreshPadMenuUI();
+          });
+          padBuildList.appendChild(btn);
+        });
+      } else {
+        // Occupied Pad: show Upgrade (if Ertapenem & wave >= 3), +1 (15G), Demolish (60% refund)
+        const spec = ANTIBIOTIC_SPECS[currentActivePad.towerType];
+        padMenuStatus.textContent = `${spec.name} x${currentActivePad.unitCount}`;
+        padBuildList.classList.add('hidden');
+        padManageList.classList.remove('hidden');
+        padManageList.classList.add('flex');
+
+        padTowerInfo.innerHTML = `
+          <div class="font-bold text-amber-300">${spec.name} (${spec.subtitle}) — 數量：${currentActivePad.unitCount} 名</div>
+          <div class="text-[11px] text-slate-300 mt-0.5">已投入金額：${currentActivePad.investedGold} 金</div>
+        `;
+
+        // Upgrade Ertapenem -> Meropenem (10G)
+        if (currentActivePad.towerType === 'ertapenem' && perms.canUpgradeMero) {
+          btnPadUpgrade.classList.remove('hidden');
+          btnPadUpgrade.disabled = gold < 10;
+        } else {
+          btnPadUpgrade.classList.add('hidden');
+        }
+
+        // +1 option (15G)
+        btnPadPlusOne.disabled = gold < 15;
+
+        // Demolish 60% refund
+        const refund = Math.floor(currentActivePad.investedGold * 0.6);
+        demolishRefundLabel.textContent = `回收 +${refund}金`;
+      }
+    }
+
+    // Pad Management Button Listeners
+    btnPadUpgrade.addEventListener('click', () => {
+      if (!currentActivePad || currentActivePad.towerType !== 'ertapenem') return;
+      const perms = getWavePermissions(currentWave);
+      if (!perms.canUpgradeMero || gold < 10) return;
+      gold -= 10;
+      currentActivePad.towerType = 'meropenem';
+      currentActivePad.investedGold += 10;
+      placeOrRebuildPadUnits(currentActivePad);
+      sound.playSfx('upgrade');
+      updateTopHUD();
+      lastPadMenuSignature = '';
+      refreshPadMenuUI();
+    });
+
+    btnPadPlusOne.addEventListener('click', () => {
+      if (!currentActivePad || !currentActivePad.towerType) return;
+      if (gold < 15) return;
+      gold -= 15;
+      currentActivePad.unitCount += 1;
+      currentActivePad.investedGold += 15;
+      currentActivePad.cooldowns.push(0);
+      placeOrRebuildPadUnits(currentActivePad);
+      sound.playSfx('upgrade');
+      updateTopHUD();
+      lastPadMenuSignature = '';
+      refreshPadMenuUI();
+    });
+
+    btnPadDemolish.addEventListener('click', () => {
+      if (!currentActivePad || !currentActivePad.towerType) return;
+      const refund = Math.floor(currentActivePad.investedGold * 0.6);
+      gold += refund;
+      clearSinglePad(currentActivePad);
+      sound.playSfx('coin');
+      updateTopHUD();
+      lastPadMenuSignature = '';
+      refreshPadMenuUI();
+    });
+
+    // Pause & Resume Buttons
+    btnPause.addEventListener('click', () => {
+      togglePauseGame();
+    });
+    btnResumeOverlay.addEventListener('click', () => {
+      if (gamePaused) togglePauseGame();
+    });
+
+    // Doctor Evolution Button (Stage 0 -> 1 costs 5G, Stage 1 -> 2 costs 10G)
+    btnEvolve.addEventListener('click', () => {
+      if (gamePaused) return;
+      if (doctorEvolutionStage === 0 && gold >= 5) {
+        gold -= 5;
+        doctorEvolutionStage = 1;
+        setDoctorEvolutionVisual(1);
+        sound.playSfx('upgrade');
+        updateTopHUD();
+        lastPadMenuSignature = '';
+        refreshPadMenuUI();
+      } else if (doctorEvolutionStage === 1 && gold >= 10) {
+        gold -= 10;
+        doctorEvolutionStage = 2;
+        setDoctorEvolutionVisual(2);
+        sound.playSfx('upgrade');
+        updateTopHUD();
+        lastPadMenuSignature = '';
+        refreshPadMenuUI();
+      }
+    });
+
+    // Handwash Button
+    btnHandwash.addEventListener('click', () => {
+      if (handwashCooldown > 0 || !gameRunning || gamePaused || gameOver) return;
+      // Trigger Handwash!
+      handwashUsedOnce = true;
+      handwashCooldown = 180; // 180 seconds cooldown
+      sound.playSfx('handwash');
+
+      // Visual Blue Water Wave across entire screen
+      const overlay = document.getElementById('water-wave-overlay');
+      const surge = document.getElementById('water-surge-bar');
+      overlay.style.display = 'block';
+      surge.style.animation = 'none';
+      void surge.offsetWidth;
+      surge.style.animation = 'surgeAcross 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards';
+      setTimeout(() => {
+        overlay.style.display = 'none';
+      }, 1850);
+
+      // Kill all active bacteria currently on the battlefield WITHOUT awarding gold
+      activeBacteria.forEach(b => {
+        scene.remove(b.mesh);
+      });
+      totalKills += activeBacteria.length;
+      activeBacteria = [];
+      updateTopHUD();
+      checkWaveCompletion();
+    });
+
+    // Audio & Codex Modals
+    document.getElementById('btn-audio').addEventListener('click', () => {
+      const on = sound.toggle();
+      document.getElementById('audio-icon').textContent = on ? '🔊' : '🔇';
+      document.getElementById('audio-label').textContent = on ? '音效開' : '靜音';
+    });
+
+    const modalCodex = document.getElementById('modal-codex');
+    document.getElementById('btn-codex').addEventListener('click', () => {
+      modalCodex.classList.remove('hidden');
+      modalCodex.classList.add('flex');
+    });
+    document.getElementById('btn-close-codex').addEventListener('click', () => {
+      modalCodex.classList.add('hidden');
+      modalCodex.classList.remove('flex');
+    });
+
+    // =========================================================================
+    // 8. WAVE MANAGEMENT, SPAWNING, COMBAT & PROJECTILES
+    // =========================================================================
+    function getWaveSpeedMultiplier(wave) {
+      if (wave < 7) return 1.0;
+      // Wave 7 adds +5%, and each subsequent wave adds +5% over the previous wave
+      return Math.pow(1.05, wave - 6);
+    }
+
+    function startWave(waveNum, isNewGame = false) {
+      currentWave = waveNum;
+
+      if (!isNewGame) {
+        // Prompt: 過關後場地清空，進化也消失，金幣可以保留一半到下一關；若醫院生命值不到10，過關時+1（最大值10）
+        clearAllPads();
+        activeProjectiles.forEach(p => scene.remove(p.mesh));
+        activeProjectiles = [];
+        doctorEvolutionStage = 0;
+        setDoctorEvolutionVisual(0);
+        gold = Math.floor(gold / 2);
+        if (castleHp < 10) {
+          castleHp = Math.min(10, castleHp + 1);
+        }
+      }
+
+      waveSpawnQueue = generateWaveEnemies(currentWave);
+      waveSpawnTimer = 0.5;
+
+      // Describe wave for banner
+      const descriptions = {
+        1: '腸桿菌 x10（本關僅能強化醫師為 Tigecycline）',
+        2: '腸桿菌 x20、ESBL x10、葡萄球菌 x10（開放 Ertapenem）',
+        3: '腸桿菌 x20、ESBL x20、綠膿桿菌 x10、葡萄球菌 x10（開放 Cipro、Polymyxin 與升級 Meropenem）',
+        4: '腸桿菌 x30、ESBL x30、CRE x20、葡萄球菌 x10、綠膿桿菌 x10（開放 Zavicefta）',
+        5: '腸桿菌 x30、ESBL x30、CRE x30、厭氧菌 x10、葡萄球菌 x20、MRSA x10（開放 Teicoplanin）',
+        6: '腸桿菌 x40、ESBL x30、CRE x30、念珠菌 x20、MRSA x20（全防禦人員開放！）'
+      };
+      const subText = descriptions[currentWave] || `隨機混合細菌 x${waveSpawnQueue.length}（移速與出現速度提升！）`;
+      showWaveToast(`第 ${currentWave} 關開始！`, subText);
+
+      lastPadMenuSignature = '';
+      updateTopHUD();
+      refreshPadMenuUI();
+    }
+
+    function spawnBacterium(type) {
+      const mesh = createBacteriaModel(type);
+      const startPt = pathCurve.getPointAt(0);
+      mesh.position.copy(startPt);
+      scene.add(mesh);
+
+      const speedMult = getWaveSpeedMultiplier(currentWave);
+      // Base speed along curve t in [0, 1] (~26 seconds to traverse the S-corridor at 1x)
+      const baseCurveSpeed = 0.038 * speedMult;
+
+      activeBacteria.push({
+        type,
+        hp: 100,
+        maxHp: 100,
+        t: 0,
+        speed: baseCurveSpeed,
+        mesh,
+        walkPhase: Math.random() * Math.PI * 2
+      });
+    }
+
+    function damageBacterium(bact, dmg) {
+      bact.hp -= dmg;
+      const ratio = Math.max(0, bact.hp / bact.maxHp);
+      bact.mesh.userData.hpBar.scale.x = Math.max(0.001, ratio);
+      bact.mesh.userData.hpBar.material.color.setHex(ratio > 0.5 ? 0x22c55e : ratio > 0.25 ? 0xfacc15 : 0xef4444);
+
+      if (bact.hp <= 0 && !bact.dead) {
+        bact.dead = true;
+        scene.remove(bact.mesh);
+        const idx = activeBacteria.indexOf(bact);
+        if (idx !== -1) activeBacteria.splice(idx, 1);
+        gold += 1;
+        totalKills += 1;
+        sound.playSfx('coin');
+        updateTopHUD();
+        lastPadMenuSignature = '';
+        refreshPadMenuUI();
+        checkWaveCompletion();
+      }
+    }
+
+    // Find closest vulnerable bacterium within range
+    function findTargetInRange(x, z, damageMap, range) {
+      let best = null;
+      let bestDist = range;
+      for (const b of activeBacteria) {
+        if (b.dead) continue;
+        const dmg = damageMap[b.type];
+        if (!dmg || dmg <= 0) continue; // Only target bacteria this antibiotic can damage!
+        const d = Math.hypot(b.mesh.position.x - x, b.mesh.position.z - z);
+        if (d <= bestDist) {
+          bestDist = d;
+          best = b;
+        }
+      }
+      return best;
+    }
+
+    // Spawn 3D Projectile (Scalpel, Baseball, Arrow, Sniper Bullet, Fireball, Bazooka Rocket, MG Bullet)
+    function spawnProjectile(fromX, fromZ, targetBact, weaponType, damage) {
+      const projGroup = new THREE.Group();
+      projGroup.position.set(fromX, 1.8, fromZ);
+
+      if (weaponType === 'unasyn') {
+        // Silver surgical scalpel
+        const handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.14, 0.08, 0.55),
+          new THREE.MeshStandardMaterial({ color: 0x0d9488 })
+        );
+        const blade = new THREE.Mesh(
+          new THREE.ConeGeometry(0.12, 0.5, 4),
+          new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9 })
+        );
+        blade.rotation.x = Math.PI / 2;
+        blade.position.z = 0.45;
+        projGroup.add(handle, blade);
+      } else if (weaponType === 'ertapenem') {
+        // White baseball
+        const ball = new THREE.Mesh(
+          new THREE.SphereGeometry(0.28, 10, 10),
+          new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        projGroup.add(ball);
+      } else if (weaponType === 'ciprofloxacin') {
+        // Arrow
+        const shaft = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.05, 0.05, 1.2, 6),
+          new THREE.MeshStandardMaterial({ color: 0x92400e })
+        );
+        shaft.rotation.x = Math.PI / 2;
+        const tip = new THREE.Mesh(
+          new THREE.ConeGeometry(0.14, 0.35, 6),
+          new THREE.MeshStandardMaterial({ color: 0x94a3b8 })
+        );
+        tip.rotation.x = Math.PI / 2;
+        tip.position.z = 0.65;
+        projGroup.add(shaft, tip);
+      } else if (weaponType === 'zavicefta') {
+        // High-speed golden sniper round
+        const bullet = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.08, 0.9, 8),
+          new THREE.MeshBasicMaterial({ color: 0xfef08a })
+        );
+        bullet.rotation.x = Math.PI / 2;
+        projGroup.add(bullet);
+      } else if (weaponType === 'erasix') {
+        // Blazing fireball
+        const fire = new THREE.Mesh(
+          new THREE.SphereGeometry(0.42, 12, 12),
+          new THREE.MeshBasicMaterial({ color: 0xf97316 })
+        );
+        projGroup.add(fire);
+      } else if (weaponType === 'teicoplanin') {
+        // Bazooka rocket warhead
+        const body = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.18, 0.18, 0.85, 8),
+          new THREE.MeshStandardMaterial({ color: 0x475569 })
+        );
+        body.rotation.x = Math.PI / 2;
+        const warhead = new THREE.Mesh(
+          new THREE.ConeGeometry(0.22, 0.45, 8),
+          new THREE.MeshStandardMaterial({ color: 0xef4444 })
+        );
+        warhead.rotation.x = Math.PI / 2;
+        warhead.position.z = 0.55;
+        projGroup.add(body, warhead);
+      } else if (weaponType === 'metronidazole') {
+        // Machine gun tracer bullet
+        const tracer = new THREE.Mesh(
+          new THREE.SphereGeometry(0.18, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0xa3e635 })
+        );
+        projGroup.add(tracer);
+      } else if (weaponType === 'polymyxin') {
+        // Cowboy silver revolver bullet
+        const slug = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.09, 0.09, 0.65, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.9, roughness: 0.15 })
+        );
+        slug.rotation.x = Math.PI / 2;
+        projGroup.add(slug);
+      } else if (weaponType === 'tigecycline') {
+        // Golden Tiger-infused surgical blade
+        const handle = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 0.1, 0.65),
+          new THREE.MeshStandardMaterial({ color: 0xf97316 })
+        );
+        const blade = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18, 0.65, 4),
+          new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xd97706, metalness: 0.9 })
+        );
+        blade.rotation.x = Math.PI / 2;
+        blade.position.z = 0.55;
+        projGroup.add(handle, blade);
+      }
+
+      scene.add(projGroup);
+      activeProjectiles.push({
+        mesh: projGroup,
+        target: targetBact,
+        speed: weaponType === 'zavicefta' ? 52 : 32,
+        damage,
+        weaponType
+      });
+    }
+
+    function checkWaveCompletion() {
+      const aliveCount = activeBacteria.filter(b => !b.dead).length;
+      if (waveSpawnQueue.length === 0 && aliveCount === 0 && !gameOver) {
+        activeBacteria = [];
+        startWave(currentWave + 1, false);
+      }
+    }
+
+    function triggerGameOver() {
+      gameOver = true;
+      gameRunning = false;
+      document.getElementById('gameover-kills').textContent = totalKills;
+      document.getElementById('gameover-wave').textContent = `抵達關卡：第 ${currentWave} 關`;
+      const modal = document.getElementById('modal-gameover');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    // =========================================================================
+    // 9. MINIMAP RENDERING (Bottom-Left)
+    // =========================================================================
+    const minimapCanvas = document.getElementById('minimap-canvas');
+    const mctx = minimapCanvas.getContext('2d');
+
+    function drawMinimap() {
+      const w = minimapCanvas.width;
+      const h = minimapCanvas.height;
+      mctx.clearRect(0, 0, w, h);
+
+      const toMapX = x => ((x + FIELD_WIDTH / 2) / FIELD_WIDTH) * w;
+      const toMapY = z => ((z + FIELD_HEIGHT / 2) / FIELD_HEIGHT) * h;
+
+      // Draw S-curve Path
+      mctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+      mctx.lineWidth = 8;
+      mctx.lineCap = 'round';
+      mctx.lineJoin = 'round';
+      mctx.beginPath();
+      pathPoints.forEach((pt, idx) => {
+        const mx = toMapX(pt.x);
+        const my = toMapY(pt.z);
+        if (idx === 0) mctx.moveTo(mx, my);
+        else mctx.lineTo(mx, my);
+      });
+      mctx.stroke();
+
+      // Draw 8 Defense Pads
+      defensePads.forEach(pad => {
+        const mx = toMapX(pad.x);
+        const my = toMapY(pad.z);
+        mctx.fillStyle = pad.towerType ? '#fbbf24' : 'rgba(148, 163, 184, 0.5)';
+        mctx.beginPath();
+        mctx.arc(mx, my, pad.towerType ? 4.5 : 3, 0, Math.PI * 2);
+        mctx.fill();
+      });
+
+      // Draw Castle
+      const castlePt = rawWaypoints[rawWaypoints.length - 1];
+      mctx.fillStyle = '#34d399';
+      mctx.fillRect(toMapX(castlePt.x) - 5, toMapY(castlePt.z) - 5, 10, 10);
+
+      // Draw Bacteria
+      activeBacteria.forEach(b => {
+        if (b.dead) return;
+        mctx.fillStyle = '#f43f5e';
+        mctx.beginPath();
+        mctx.arc(toMapX(b.mesh.position.x), toMapY(b.mesh.position.z), 2.6, 0, Math.PI * 2);
+        mctx.fill();
+      });
+
+      // Draw Player Doctor
+      const px = toMapX(doctorMesh.position.x);
+      const py = toMapY(doctorMesh.position.z);
+      mctx.fillStyle = '#22d3ee';
+      mctx.beginPath();
+      mctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.strokeStyle = '#ffffff';
+      mctx.lineWidth = 1.5;
+      mctx.stroke();
+    }
+
+    // =========================================================================
+    // 10. MAIN GAME LOOP & DYNAMIC RANGE CALCULATION
+    // =========================================================================
+    function updateVisibleBattlefieldRange() {
+      // Calculate visible battlefield width at the ground plane where the player stands
+      const dist = CAMERA_OFFSET.length();
+      const vFOV = THREE.MathUtils.degToRad(camera.fov);
+      const visibleHeight = 2 * Math.tan(vFOV / 2) * dist;
+      const visibleWidth = visibleHeight * camera.aspect;
+      // Base 1/5 of visible battlefield width, multiplied by 1.2x as requested
+      attackRange = Math.max(9.5, Math.min(18.0, visibleWidth / 5)) * 1.2;
+      doctorRangeRing.scale.set(attackRange, attackRange, 1);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      updateVisibleBattlefieldRange();
+    });
+    updateVisibleBattlefieldRange();
+
+    let lastFrameTime = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
+      lastFrameTime = now;
+
+      if (gameRunning && !gamePaused && !gameOver) {
+        // 1. Handwash Cooldown Timer
+        if (handwashCooldown > 0) {
+          handwashCooldown = Math.max(0, handwashCooldown - dt);
+          updateTopHUD();
+        }
+
+        // 2. Doctor Movement (WASD / Arrow keys + Mobile Touch Drag)
+        let moveX = 0;
+        let moveZ = 0;
+        if (keysPressed['w'] || keysPressed['arrowup']) moveZ -= 1;
+        if (keysPressed['s'] || keysPressed['arrowdown']) moveZ += 1;
+        if (keysPressed['a'] || keysPressed['arrowleft']) moveX -= 1;
+        if (keysPressed['d'] || keysPressed['arrowright']) moveX += 1;
+
+        if (touchActive) {
+          moveX += touchVectorX;
+          moveZ += touchVectorY;
+        }
+
+        const moveLen = Math.hypot(moveX, moveZ);
+        const docSpeed = 18.5;
+        if (moveLen > 0.05) {
+          const nx = moveX / Math.max(1, moveLen);
+          const nz = moveZ / Math.max(1, moveLen);
+          doctorMesh.position.x = THREE.MathUtils.clamp(
+            doctorMesh.position.x + nx * docSpeed * dt,
+            -FIELD_WIDTH / 2 + 2.5,
+            FIELD_WIDTH / 2 - 2.5
+          );
+          doctorMesh.position.z = THREE.MathUtils.clamp(
+            doctorMesh.position.z + nz * docSpeed * dt,
+            -FIELD_HEIGHT / 2 + 2.5,
+            FIELD_HEIGHT / 2 - 2.5
+          );
+
+          // Walking leg swing animation (Doctor on foot or Tiger legs when riding)
+          const walkCycle = now * 0.016;
+          if (doctorEvolutionStage >= 1) {
+            doctorMesh.userData.lLeg.rotation.x = 0;
+            doctorMesh.userData.rLeg.rotation.x = 0;
+            const tLegs = doctorMesh.userData.tLegs;
+            tLegs[0].rotation.x = Math.sin(walkCycle) * 0.6;
+            tLegs[1].rotation.x = -Math.sin(walkCycle) * 0.6;
+            tLegs[2].rotation.x = -Math.sin(walkCycle) * 0.6;
+            tLegs[3].rotation.x = Math.sin(walkCycle) * 0.6;
+          } else {
+            doctorMesh.userData.lLeg.rotation.x = Math.sin(walkCycle) * 0.55;
+            doctorMesh.userData.rLeg.rotation.x = -Math.sin(walkCycle) * 0.55;
+          }
+          // Face movement direction when no target in range
+          doctorMesh.rotation.y = Math.atan2(nx, nz);
+        } else {
+          doctorMesh.userData.lLeg.rotation.x = 0;
+          doctorMesh.userData.rLeg.rotation.x = 0;
+          doctorMesh.userData.tLegs.forEach(tl => { tl.rotation.x = 0; });
+        }
+
+        // 3. Camera Smooth Follow (Fixed angle, shows area around player)
+        const desiredCamPos = doctorMesh.position.clone().add(CAMERA_OFFSET);
+        camera.position.lerp(desiredCamPos, 0.12);
+        const lookTarget = doctorMesh.position.clone().add(CAMERA_LOOK_OFFSET);
+        camera.lookAt(lookTarget);
+
+        // 4. Check Proximity to the 8 Defense Pads
+        let nearestPad = null;
+        let nearestPadDist = 4.2; // Trigger distance when standing on/beside pad
+        for (const pad of defensePads) {
+          const dist = Math.hypot(doctorMesh.position.x - pad.x, doctorMesh.position.z - pad.z);
+          if (dist < nearestPadDist) {
+            nearestPadDist = dist;
+            nearestPad = pad;
+          }
+        }
+        currentActivePad = nearestPad;
+        refreshPadMenuUI();
+
+        // 5. Wave Bacteria Spawning
+        if (waveSpawnQueue.length > 0) {
+          waveSpawnTimer -= dt;
+          if (waveSpawnTimer <= 0) {
+            const nextType = waveSpawnQueue.shift();
+            spawnBacterium(nextType);
+            // First 6 waves: 1 bacterium per second. Wave 7+: +5% faster each wave
+            const speedMult = getWaveSpeedMultiplier(currentWave);
+            waveSpawnTimer = 1.0 / speedMult;
+            updateTopHUD();
+          }
+        }
+
+        // 6. Update Active Bacteria Movement along S-Curve (No collision with player)
+        for (let i = activeBacteria.length - 1; i >= 0; i--) {
+          const b = activeBacteria[i];
+          if (b.dead) {
+            activeBacteria.splice(i, 1);
+            continue;
+          }
+
+          b.t += b.speed * dt;
+          if (b.t >= 1.0) {
+            // Reached the Castle!
+            scene.remove(b.mesh);
+            activeBacteria.splice(i, 1);
+            castleHp = Math.max(0, castleHp - 1);
+            sound.playSfx('castlehit');
+            // Shake castle slightly
+            castleGroup.rotation.z = 0.12;
+            setTimeout(() => { castleGroup.rotation.z = 0; }, 180);
+            updateTopHUD();
+
+            if (castleHp <= 0) {
+              // Collapse castle visually
+              castleGroup.position.y = -3.5;
+              triggerGameOver();
+              break;
+            }
+            checkWaveCompletion();
+            continue;
+          }
+
+          const pos = pathCurve.getPointAt(b.t);
+          const nextPos = pathCurve.getPointAt(Math.min(1.0, b.t + 0.01));
+          b.mesh.position.copy(pos);
+
+          // Upright walking waddle & leg animation
+          b.walkPhase += dt * 11;
+          b.mesh.userData.leftLeg.rotation.x = Math.sin(b.walkPhase) * 0.6;
+          b.mesh.userData.rightLeg.rotation.x = -Math.sin(b.walkPhase) * 0.6;
+          b.mesh.position.y = Math.abs(Math.sin(b.walkPhase)) * 0.18;
+
+          const angle = Math.atan2(nextPos.x - pos.x, nextPos.z - pos.z);
+          b.mesh.rotation.y = angle;
+
+          // Keep HP bar facing camera
+          b.mesh.userData.hpGroup.lookAt(camera.position);
+        }
+
+        // 7. Doctor (Unasyn Stage 0 / Tigecycline Stage 1 & 2) Auto-Targeting & Attacking
+        doctorShootTimer -= dt;
+        const activeDocSpec = doctorEvolutionStage >= 1 ? ANTIBIOTIC_SPECS.tigecycline : ANTIBIOTIC_SPECS.unasyn;
+        const docTarget = findTargetInRange(
+          doctorMesh.position.x,
+          doctorMesh.position.z,
+          activeDocSpec.damage,
+          attackRange
+        );
+        if (docTarget) {
+          // Always face the target bacterium (often showing player's back to camera)
+          const angleToTarget = Math.atan2(
+            docTarget.mesh.position.x - doctorMesh.position.x,
+            docTarget.mesh.position.z - doctorMesh.position.z
+          );
+          doctorMesh.rotation.y = angleToTarget;
+
+          if (doctorShootTimer <= 0) {
+            let interval = ANTIBIOTIC_SPECS.unasyn.interval; // 0.5s at stage 0
+            if (doctorEvolutionStage === 1) interval = ANTIBIOTIC_SPECS.tigecycline.intervalStage1; // 0.6s at stage 1
+            else if (doctorEvolutionStage >= 2) interval = ANTIBIOTIC_SPECS.tigecycline.intervalStage2; // 0.3s at stage 2
+            doctorShootTimer = interval;
+            const dmg = activeDocSpec.damage[docTarget.type];
+            const projType = doctorEvolutionStage >= 1 ? 'tigecycline' : 'unasyn';
+            spawnProjectile(doctorMesh.position.x, doctorMesh.position.z, docTarget, projType, dmg);
+            sound.playSfx('scalpel');
+          }
+        }
+
+        // 8. Defense Personnel Auto-Targeting, Facing Target & Attacking
+        for (const pad of defensePads) {
+          if (!pad.towerType || pad.unitCount <= 0) continue;
+          const spec = ANTIBIOTIC_SPECS[pad.towerType];
+
+          for (let u = 0; u < pad.unitMeshes.length; u++) {
+            const unitMesh = pad.unitMeshes[u];
+            pad.cooldowns[u] = Math.max(0, (pad.cooldowns[u] || 0) - dt);
+
+            const target = findTargetInRange(
+              unitMesh.position.x,
+              unitMesh.position.z,
+              spec.damage,
+              attackRange
+            );
+
+            if (target) {
+              // Rotate character so their front/gun/hose points directly at the bacterium
+              const angle = Math.atan2(
+                target.mesh.position.x - unitMesh.position.x,
+                target.mesh.position.z - unitMesh.position.z
+              );
+              unitMesh.rotation.y = angle;
+
+              if (spec.continuous) {
+                // Meropenem continuous water stream!
+                const beam = pad.waterBeams[u];
+                if (beam) {
+                  beam.visible = true;
+                  const startPos = new THREE.Vector3(
+                    unitMesh.position.x + Math.sin(angle) * 0.9,
+                    1.65,
+                    unitMesh.position.z + Math.cos(angle) * 0.9
+                  );
+                  const endPos = new THREE.Vector3(
+                    target.mesh.position.x,
+                    1.5,
+                    target.mesh.position.z
+                  );
+                  const dist = startPos.distanceTo(endPos);
+                  beam.position.copy(startPos);
+                  beam.lookAt(endPos);
+                  beam.scale.set(1, 1, dist);
+                }
+                // Apply continuous water damage per second * dt + water spray audio
+                sound.playSfx('waterstream');
+                const dps = spec.damagePerSec[target.type] || 0;
+                damageBacterium(target, dps * dt);
+                checkWaveCompletion();
+              } else if (pad.cooldowns[u] <= 0) {
+                pad.cooldowns[u] = spec.interval;
+                const dmg = spec.damage[target.type];
+                spawnProjectile(unitMesh.position.x, unitMesh.position.z, target, pad.towerType, dmg);
+                if (spec.sfx) sound.playSfx(spec.sfx);
+              }
+            } else if (spec.continuous && pad.waterBeams[u]) {
+              pad.waterBeams[u].visible = false;
+            }
+          }
+        }
+
+        // 9. Update Projectiles in Flight
+        for (let i = activeProjectiles.length - 1; i >= 0; i--) {
+          const p = activeProjectiles[i];
+          if (!p.target || p.target.dead) {
+            scene.remove(p.mesh);
+            activeProjectiles.splice(i, 1);
+            continue;
+          }
+
+          const targetPos = new THREE.Vector3(
+            p.target.mesh.position.x,
+            1.6,
+            p.target.mesh.position.z
+          );
+          const dir = targetPos.clone().sub(p.mesh.position);
+          const dist = dir.length();
+
+          if (dist < 0.85) {
+            // Hit target bacterium!
+            damageBacterium(p.target, p.damage);
+            scene.remove(p.mesh);
+            activeProjectiles.splice(i, 1);
+            checkWaveCompletion();
+          } else {
+            dir.normalize();
+            p.mesh.position.addScaledVector(dir, p.speed * dt);
+            p.mesh.lookAt(targetPos);
+          }
+        }
+
+        // 10. Draw Bottom-Left Minimap
+        drawMinimap();
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // =========================================================================
+    // 11. START & RESTART HANDLERS
+    // =========================================================================
+    function initNewGame() {
+      sound.init();
+      gameOver = false;
+      gamePaused = false;
+      gameRunning = true;
+      updatePauseUI();
+      currentWave = 1;
+      gold = 15;
+      castleHp = 10;
+      totalKills = 0;
+      doctorEvolutionStage = 0;
+      setDoctorEvolutionVisual(0);
+      handwashCooldown = 180;
+      handwashUsedOnce = false;
+
+      castleGroup.position.y = 0;
+      doctorMesh.position.set(0, 0, -18);
+
+      activeBacteria.forEach(b => scene.remove(b.mesh));
+      activeBacteria = [];
+      activeProjectiles.forEach(p => scene.remove(p.mesh));
+      activeProjectiles = [];
+      clearAllPads();
+
+      startWave(1, true);
+    }
+
+    document.getElementById('btn-start-game').addEventListener('click', () => {
+      document.getElementById('modal-start').classList.add('hidden');
+      initNewGame();
+    });
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      const modal = document.getElementById('modal-gameover');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      initNewGame();
+    });
+
+    // Unlock and resume Web Audio on any user interaction (click, touch, or key press)
+    ['pointerdown', 'touchstart', 'click', 'keydown'].forEach(evtName => {
+      window.addEventListener(evtName, () => {
+        if (sound.enabled) {
+          sound.ensureContext();
+          if (gameRunning && !gamePaused && !gameOver && !sound.bgmTimer) {
+            sound.startBGM();
+          }
+        }
+      }, { passive: true });
+    });
+
+    window.onload = () => {
+      updateTopHUD();
+      drawMinimap();
+      requestAnimationFrame(animate);
+    };
+  </script>
+</body>
+</html>
